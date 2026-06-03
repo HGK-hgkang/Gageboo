@@ -49,18 +49,24 @@ function saveRec(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d))
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 const DAYS   = ["일","월","화","수","목","금","토"];
 const fmt = n => n.toLocaleString("ko-KR")+"원";
-const fmtS = n => { const a=Math.abs(n); if(a>=1e8) return (n/1e8).toFixed(1)+"억"; if(a>=1e4) return Math.round(n/1e4)+"만"; return n.toLocaleString(); };
+const fmtS = n => {
+  const a = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (a >= 1e8) return sign + (a / 1e8).toFixed(1) + "억";
+  if (a >= 1e4) return sign + (a / 1e4).toFixed(1) + "만";
+  return n.toLocaleString();
+};
 const dim = (y,m) => new Date(y,m+1,0).getDate();
 const fd  = (y,m) => new Date(y,m,1).getDay();
 
 const ECAT = [
-  {id:"food",l:"식비",i:"🍚"},{id:"transport",l:"교통",i:"🚌"},{id:"shopping",l:"쇼핑",i:"🛍️"},
-  {id:"health",l:"건강",i:"💊"},{id:"housing",l:"주거",i:"🏠"},{id:"comm",l:"통신",i:"📱"},
-  {id:"culture",l:"문화",i:"🎭"},{id:"etc",l:"기타",i:"💡"}
+  {id:"food",l:"식비",i:"🍚"},{id:"cafe",l:"카페",i:"☕"},{id:"transport",l:"교통",i:"🚌"},
+  {id:"shopping",l:"쇼핑",i:"🛍️"},{id:"health",l:"건강",i:"💊"},{id:"housing",l:"주거",i:"🏠"},
+  {id:"comm",l:"통신",i:"📱"},{id:"culture",l:"문화",i:"🎭"},{id:"etc",l:"기타",i:"💡"}
 ];
 const ICAT = [
-  {id:"salary",l:"급여",i:"💼"},{id:"bonus",l:"보너스",i:"🎁"},{id:"invest",l:"투자",i:"📈"},
-  {id:"side",l:"부업",i:"🔧"},{id:"etc",l:"기타",i:"💰"}
+  {id:"allowance",l:"용돈",i:"💵"},{id:"salary",l:"급여",i:"💼"},{id:"bonus",l:"보너스",i:"🎁"},
+  {id:"invest",l:"투자",i:"📈"},{id:"side",l:"부업",i:"🔧"},{id:"etc",l:"기타",i:"💰"}
 ];
 
 const C = {
@@ -84,6 +90,8 @@ function App() {
   const [aAmt,  setAAmt]  = useState("");
   const [aCat,  setACat]  = useState("");
   const [aMemo, setAMemo] = useState("");
+  const [showMonthPicker, setMonthPicker] = useState(false);
+  const [pickYear, setPickYear] = useState(now.getFullYear());
 
   const mk = `${year}-${String(month+1).padStart(2,"0")}`;
   const mr = useMemo(()=>recs[mk]||{},[recs,mk]);
@@ -108,6 +116,12 @@ function App() {
 
   function prevM() { if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1); }
   function nextM() { if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1); }
+
+  function openMonthPicker() { setPickYear(year); setMonthPicker(true); }
+  function selectMonth(m) { setYear(pickYear); setMonth(m); setMonthPicker(false); }
+  function goToday() {
+    setYear(now.getFullYear()); setMonth(now.getMonth()); setMonthPicker(false);
+  }
 
   function doSave() {
     const amt=parseInt(aAmt.replace(/[^0-9]/g,""),10);
@@ -155,7 +169,7 @@ function App() {
       ...items.map(s=>
         e("div",{key:s.l,style:{background:C.card,borderRadius:14,padding:"12px 10px",textAlign:"center",border:`1px solid ${C.bdr}`}},
           e("div",{style:{fontSize:11,color:C.mut,marginBottom:4}},s.l),
-          e("div",{style:{fontSize:13,fontWeight:700,color:s.c}},fmtS(s.v))
+          e("div",{style:{fontSize:s.sm||11,fontWeight:700,color:s.c}},fmtS(s.v))
         )
       )
     );
@@ -165,7 +179,11 @@ function App() {
     // month nav
     e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"18px 20px 0"}},
       btn("‹",prevM,{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}),
-      e("span",{style:{fontSize:18,fontWeight:700,color:C.wh}},`${year}년 ${MONTHS[month]}`),
+      e("button",{
+        onClick: openMonthPicker,
+        style:{fontFamily:"'Noto Sans KR',sans-serif",background:"transparent",border:"none",cursor:"pointer",
+          fontSize:18,fontWeight:700,color:C.wh,padding:"4px 12px",borderRadius:10}
+      },`${year}년 ${MONTHS[month]}`),
       btn("›",nextM,{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"})
     ),
     // summary
@@ -189,8 +207,8 @@ function App() {
             display:"flex",flexDirection:"column",alignItems:"center"}
         },
           e("span",{style:{fontSize:13,fontWeight:700,color:dow===0?"#f87171":dow===6?"#60a5fa":C.txt}},d),
-          inc>0&&e("span",{style:{fontSize:9,color:C.inc,marginTop:2,fontWeight:600}},"+"+fmtS(inc)),
-          exp>0&&e("span",{style:{fontSize:9,color:C.exp,marginTop:1,fontWeight:600}},"-"+fmtS(exp))
+          inc>0&&e("span",{style:{fontSize:8,color:C.inc,marginTop:2,fontWeight:600}},"+"+fmtS(inc)),
+          exp>0&&e("span",{style:{fontSize:8,color:C.exp,marginTop:1,fontWeight:600}},"-"+fmtS(exp))
         );
       })
     )
@@ -233,6 +251,36 @@ function App() {
             dot:(props)=>{ const {cx,cy,value,key}=props; return React.createElement("circle",{key,cx,cy,r:4,fill:value<0?C.exp:C.acc,stroke:"none"}); }
           })
         )
+      )
+    )
+  );
+
+  // ── MONTH PICKER ──
+  const monthPickerEl = showMonthPicker && e("div",{
+    style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:110,padding:20},
+    onClick:ev=>{ if(ev.target===ev.currentTarget) setMonthPicker(false); }
+  },
+    e("div",{style:{background:C.surf,width:"100%",maxWidth:340,borderRadius:20,padding:"20px 16px 16px",border:`1px solid ${C.bdr}`}},
+      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}},
+        btn("‹",()=>setPickYear(y=>y-1),{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}),
+        e("span",{style:{fontSize:17,fontWeight:700,color:C.wh}},pickYear+"년"),
+        btn("›",()=>setPickYear(y=>y+1),{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"})
+      ),
+      e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}},
+        ...MONTHS.map((m,i)=>{
+          const isSel = pickYear===year && i===month;
+          const isCur = pickYear===now.getFullYear() && i===now.getMonth();
+          return btn(m,()=>selectMonth(i),{
+            padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:600,
+            background:isSel?C.acc:isCur?C.acc+"22":C.card,
+            color:isSel?C.bg:isCur?C.acc:C.txt,
+            outline:isCur&&!isSel?`1px solid ${C.acc}44`:"none",width:"100%"
+          });
+        })
+      ),
+      e("div",{style:{display:"flex",gap:8}},
+        btn("오늘",goToday,{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${C.acc}`,background:"transparent",color:C.acc,fontWeight:600,cursor:"pointer",fontSize:13}),
+        btn("닫기",()=>setMonthPicker(false),{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${C.bdr}`,background:"transparent",color:C.mut,fontWeight:600,cursor:"pointer",fontSize:13})
       )
     )
   );
@@ -344,6 +392,7 @@ function App() {
       )
     ),
     view==="calendar"?calendarView:analyticsView,
+    monthPickerEl,
     modalEl
   );
 }
