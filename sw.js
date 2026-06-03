@@ -1,13 +1,14 @@
-const CACHE = "gageboo-v1";
+const CACHE = "gageboo-v2";
 const ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.json",
+  "./",
+  "./index.html",
+  "./manifest.json",
   "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap",
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.min.js"
+  "https://cdnjs.cloudflare.com/ajax/libs/react-is/18.2.0/umd/react-is.production.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js",
+  "https://unpkg.com/recharts@2.8.0/umd/Recharts.js"
 ];
 
 self.addEventListener("install", e => {
