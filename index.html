@@ -175,22 +175,44 @@ const setStatus  = t => { const e = $('syncStatus'); if (e) e.textContent = t; }
 const readLocal  = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
 const writeLocal = d  => localStorage.setItem(KEY, JSON.stringify(d));
 
+// 새로고침 안전장치: 15초 안에 두 번 새로고침되는 일이 없도록 막음
+function safeReload(){
+  try {
+    const last = Number(sessionStorage.getItem('gb-lastReload') || 0);
+    if (Date.now() - last < 15000) {
+      setStatus("새 데이터 도착 — 직접 새로고침하면 반영됩니다");
+      return;
+    }
+    sessionStorage.setItem('gb-lastReload', String(Date.now()));
+  } catch (e) {}
+  location.reload();
+}
+
 let user = null, busy = false;
 
 async function sync(){
-  if (!user || busy) return;
+  if (!user || busy) return false;
   busy = true;
   try {
     setStatus("동기화 중…");
     const ref    = doc(db, "users", user.uid);
     const snap   = await getDoc(ref);
     const remote = snap.exists() ? (snap.data().data || {}) : {};
-    const merged = mergeData(remote, readLocal());
-    writeLocal(merged);
-    await setDoc(ref, { data: merged, updatedAt: Date.now() });
+    const local  = readLocal();
+    const merged = mergeData(remote, local);
+
+    // 내용 기준으로 비교 (필드 순서 차이는 무시)
+    const changedLocally = canonical(merged) !== canonical(local);
+    const changedRemote  = canonical(merged) !== canonical(remote);
+
+    if (changedLocally) writeLocal(merged);
+    if (changedRemote)  await setDoc(ref, { data: merged, updatedAt: Date.now() });
+
     setStatus("동기화 완료 " + new Date().toLocaleTimeString('ko-KR'));
+    return changedLocally;
   } catch (e) {
     setStatus("동기화 실패: " + e.message);
+    return false;
   } finally { busy = false; }
 }
 
@@ -224,7 +246,7 @@ $('btnLogin').onclick = async () => {
   }
 };
 $('btnLogout').onclick = () => signOut(auth);
-$('btnSync').onclick   = sync;
+$('btnSync').onclick   = async () => { if (await sync()) safeReload(); };
 
 onAuthStateChanged(auth, async u => {
   user = u;
@@ -232,13 +254,13 @@ onAuthStateChanged(auth, async u => {
   $('syncBox').style.display  = u ? ''     : 'none';
   if (!u) { setStatus("로그아웃 상태 — 이 기기에만 저장됩니다"); return; }
   $('whoami').textContent = u.email + " ";
-  const before = localStorage.getItem(KEY) || "{}";
-  await sync();
-  if ((localStorage.getItem(KEY) || "{}") !== before) location.reload();
+  if (await sync()) safeReload();
 });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') sync();
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && user) {
+    if (await sync()) safeReload();
+  }
 });
 </script>
   
