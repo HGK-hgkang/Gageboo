@@ -1,4 +1,4 @@
-const CACHE = "gageboo-v2";
+const CACHE = "gageboo-v3";
 const ASSETS = [
   "./",
   "./index.html",
