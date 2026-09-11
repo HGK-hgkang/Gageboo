@@ -28,16 +28,62 @@
     ::-webkit-scrollbar { display: none; }
   </style>
 </head>
-  <!-- ===== 백업 / 복원 ===== -->
+<!-- ===== 백업 / 복원 ===== -->
 <div id="backupBar" style="display:flex;gap:8px;justify-content:center;padding:16px;flex-wrap:wrap">
   <button type="button" id="btnExport">백업 파일 저장</button>
   <button type="button" id="btnImport">백업 파일 불러오기</button>
+  <button type="button" id="btnDedupe">중복 정리</button>
   <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
 </div>
 
 <script>
+// 필드 순서와 무관하게 같은 내용이면 같은 문자로 만드는 함수 (이번 버그의 핵심 수정)
+function canonical(v){
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v);
+}
+
+function mergeData(a, b){
+  if (Array.isArray(a) && Array.isArray(b)) {
+    const seen = new Set(), out = [];
+    for (const it of a.concat(b)) {
+      const k = canonical(it);
+      if (!seen.has(k)) { seen.add(k); out.push(it); }
+    }
+    return out;
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const out = Object.assign({}, a);
+    for (const k of Object.keys(b)) out[k] = (k in out) ? mergeData(out[k], b[k]) : b[k];
+    return out;
+  }
+  return (b === undefined || b === null) ? a : b;
+}
+
+// 이미 불어난 중복을 걷어내는 함수
+function dedupeAll(d){
+  if (Array.isArray(d)) {
+    const seen = new Set(), out = [];
+    for (const it of d) {
+      const k = canonical(it);
+      if (!seen.has(k)) { seen.add(k); out.push(dedupeAll(it)); }
+    }
+    return out;
+  }
+  if (d && typeof d === 'object') {
+    const out = {};
+    for (const k of Object.keys(d)) out[k] = dedupeAll(d[k]);
+    return out;
+  }
+  return d;
+}
+
 (function(){
   const KEY = "gageboo-v1";
+  const countAll = d => canonical(d).split('"ts"').length - 1;
 
   document.getElementById('btnExport').onclick = function(){
     const raw  = localStorage.getItem(KEY) || "{}";
@@ -46,9 +92,20 @@
     const a = document.createElement('a');
     const d = new Date(), p = n => String(n).padStart(2,'0');
     a.href = url;
-    a.download = `gageboo-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`;
+    a.download = `gageboo-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  document.getElementById('btnDedupe').onclick = function(){
+    const cur = JSON.parse(localStorage.getItem(KEY) || "{}");
+    const before = countAll(cur);
+    const cleaned = dedupeAll(cur);
+    const after = countAll(cleaned);
+    if (!confirm(`기록 ${before}건 → ${after}건으로 정리합니다.\n진행할까요?`)) return;
+    localStorage.setItem(KEY, JSON.stringify(cleaned));
+    alert("정리 완료. 화면을 새로고침합니다.");
+    location.reload();
   };
 
   document.getElementById('btnImport').onclick = function(){
@@ -63,7 +120,7 @@
       try {
         const incoming = JSON.parse(r.result);
         const current  = JSON.parse(localStorage.getItem(KEY) || "{}");
-        localStorage.setItem(KEY, JSON.stringify(mergeData(current, incoming)));
+        localStorage.setItem(KEY, JSON.stringify(dedupeAll(mergeData(current, incoming))));
         alert("불러오기 완료. 화면을 새로고침합니다.");
         location.reload();
       } catch (err) {
@@ -74,24 +131,6 @@
     e.target.value = "";
   };
 })();
-
-// 두 데이터를 안전하게 합치는 함수 (2단계에서도 그대로 사용합니다)
-function mergeData(a, b){
-  if (Array.isArray(a) && Array.isArray(b)) {
-    const seen = new Set(), out = [];
-    for (const it of a.concat(b)) {
-      const k = JSON.stringify(it);
-      if (!seen.has(k)) { seen.add(k); out.push(it); }
-    }
-    return out;
-  }
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const out = Object.assign({}, a);
-    for (const k of Object.keys(b)) out[k] = (k in out) ? mergeData(out[k], b[k]) : b[k];
-    return out;
-  }
-  return (b === undefined || b === null) ? a : b;
-}
 </script>
 <!-- ===== 서버 동기화 ===== -->
 <div id="syncBar" style="padding:12px;text-align:center;font-size:14px">
