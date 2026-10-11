@@ -1,19 +1,33 @@
 {
+  "id": "/?source=pwa",
   "name": "가계부",
   "short_name": "가계부",
-  "description": "월별 수입/지출 관리 가계부",
+  "description": "스마트 자산 관리 및 월별 수입/지출 가계부",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0f0e17",
   "theme_color": "#0f0e17",
-  "orientation": "portrait",
+  "categories": ["finance", "utilities"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230f0e17'/%3E%3Ctext y='.85em' font-size='380' x='66'%3E📒%3C/text%3E%3C/svg%3E",
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
