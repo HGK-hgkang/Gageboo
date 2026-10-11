@@ -9,12 +9,31 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="가계부"/>
-  <link rel="manifest" href="manifest.json"/>
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"/>
-  <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png"/>
-  <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png"/>
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
+  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png"/>
+  <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <!-- PWA Early Event Capture: Captures beforeinstallprompt BEFORE any CDN or framework loads -->
+  <script>
+    window.deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      window.deferredInstallPrompt = e;
+      if (typeof window.__onInstallPromptAvailable === 'function') {
+        window.__onInstallPromptAvailable(e);
+      }
+    });
+    window.addEventListener('appinstalled', function() {
+      window.deferredInstallPrompt = null;
+      if (typeof window.__onAppInstalled === 'function') {
+        window.__onAppInstalled();
+      }
+    });
+  </script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-is/18.2.0/umd/react-is.production.min.js"></script>
@@ -367,8 +386,9 @@ function App() {
   const [authError, setAuthError] = useState("");
 
   // PWA Install State
-  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(window.deferredInstallPrompt || null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [showSamsungGuide, setShowSamsungGuide] = useState(false);
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [showInstallBanner, setShowInstallBanner] = useState(true);
 
@@ -378,47 +398,62 @@ function App() {
   const [aCat, setACat] = useState("");
   const [aMemo, setAMemo] = useState("");
 
-  // PWA beforeinstallprompt & standalone detection
+  // PWA standalone detection & prompt binding
   useEffect(() => {
-    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const isStandaloneMode =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true ||
+      document.referrer.includes('android-app://');
     setIsStandalone(isStandaloneMode);
 
-    const handleBeforeInstall = (e) => {
-      e.preventDefault();
+    if (window.deferredInstallPrompt) {
+      setInstallPrompt(window.deferredInstallPrompt);
+    }
+
+    window.__onInstallPromptAvailable = (e) => {
       setInstallPrompt(e);
     };
 
-    const handleAppInstalled = () => {
+    window.__onAppInstalled = () => {
       setInstallPrompt(null);
       setIsStandalone(true);
       setShowInstallBanner(false);
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    window.addEventListener('appinstalled', handleAppInstalled);
-
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      window.__onInstallPromptAvailable = null;
+      window.__onAppInstalled = null;
     };
   }, []);
 
   const handleInstallClick = async () => {
+    // 1. If native prompt event was captured
     if (installPrompt) {
-      installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setInstallPrompt(null);
-        setIsStandalone(true);
-        setShowInstallBanner(false);
+      try {
+        await installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        if (outcome === 'accepted') {
+          setInstallPrompt(null);
+          setIsStandalone(true);
+          setShowInstallBanner(false);
+        }
+      } catch (err) {
+        console.warn("Install prompt error:", err);
       }
+      return;
+    }
+
+    // 2. Specific browser guides
+    const ua = navigator.userAgent.toLowerCase();
+    const isSamsung = ua.includes('samsungbrowser');
+    const isIos = /iphone|ipad|ipod/.test(ua);
+
+    if (isSamsung) {
+      setShowSamsungGuide(true);
+    } else if (isIos) {
+      setShowIosGuide(true);
     } else {
-      const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
-      if (isIos) {
-        setShowIosGuide(true);
-      } else {
-        alert("브라우저 오른쪽 상단 메뉴(⋮ 또는 공유)에서 '앱 설치' 또는 '홈 화면에 추가'를 눌러 설치해 주세요!");
-      }
+      alert("브라우저 상단 주소창의 설치 아이콘 [⬇] 또는 메뉴(⋮)에서 '앱 설치'를 눌러주세요!\n(주의: '홈 화면에 추가'가 아닌 '앱 설치'를 눌러야 주소창 없는 독립 앱으로 설치됩니다.)");
     }
   };
 
@@ -1015,18 +1050,54 @@ function App() {
     )
   );
 
+  // ── SAMSUNG INTERNET SPECIFIC INSTALL GUIDE MODAL ──
+  const samsungGuideModal = showSamsungGuide && e("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 140, padding: 20 },
+    onClick: ev => { if (ev.target === ev.currentTarget) setShowSamsungGuide(false); }
+  },
+    e("div", { style: { background: C.surf, width: "100%", maxWidth: 390, borderRadius: 22, padding: "22px 20px", border: `1px solid ${C.bdr}` } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } },
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, "📱 갤럭시(삼성 인터넷) 앱 설치"),
+        btn("✕", () => setShowSamsungGuide(false), { background: "transparent", border: "none", color: C.mut, fontSize: 18, cursor: "pointer" })
+      ),
+      e("p", { style: { fontSize: 13, color: "#cbd5e1", lineHeight: 1.5, marginBottom: 16 } },
+        "일반 웹 바로가기가 아닌, ", e("strong", { style: { color: C.acc } }, "주소창 없는 진짜 독립 앱"), "으로 설치하는 2가지 방법입니다:"
+      ),
+      e("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 } },
+        e("div", { style: { background: C.card, padding: "14px", borderRadius: 14, border: `1px solid ${C.acc}66` } },
+          e("div", { style: { fontSize: 13, fontWeight: 700, color: C.acc, marginBottom: 4 } }, "방법 1: 주소창 설치 아이콘 (가장 추천!)"),
+          e("div", { style: { fontSize: 12, color: C.txt, lineHeight: 1.5 } },
+            "화면 맨 위 주소창 오른쪽 끝에 있는 ", e("strong", { style: { color: C.wh } }, "[⬇ 설치 아이콘]"), " 또는 ", e("strong", { style: { color: C.wh } }, "[+]"), "을 터치하면 바로 독립 앱으로 설치됩니다."
+          )
+        ),
+        e("div", { style: { background: C.card, padding: "14px", borderRadius: 14, border: `1px solid ${C.bdr}` } },
+          e("div", { style: { fontSize: 13, fontWeight: 700, color: C.wh, marginBottom: 4 } }, "방법 2: 하단 메뉴(☰)에서 설치 시 주의사항"),
+          e("div", { style: { fontSize: 12, color: C.txt, lineHeight: 1.5 } },
+            "하단 ☰ 메뉴에서 반드시 ", e("strong", { style: { color: C.inc } }, "'앱 설치'"), "를 눌러주세요!\n",
+            e("span", { style: { color: C.exp, fontSize: 11, display: "block", marginTop: 4 } },
+              "※ '현재 페이지 추가 ➔ 홈 화면'을 누르면 일반 웹 바로가기(주소창 표시)가 됩니다."
+            )
+          )
+        )
+      ),
+      btn("확인", () => setShowSamsungGuide(false), {
+        width: "100%", padding: "11px 0", borderRadius: 12, border: "none", background: C.acc, color: C.bg, fontWeight: 700, fontSize: 14, cursor: "pointer"
+      })
+    )
+  );
+
   // ── IOS INSTALL GUIDE MODAL ──
   const iosGuideModal = showIosGuide && e("div", {
-    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 140, padding: 20 },
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 140, padding: 20 },
     onClick: ev => { if (ev.target === ev.currentTarget) setShowIosGuide(false); }
   },
     e("div", { style: { background: C.surf, width: "100%", maxWidth: 380, borderRadius: 22, padding: "22px 20px", border: `1px solid ${C.bdr}` } },
       e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } },
-        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, "📲 아이폰 앱 설치 안내"),
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, "📲 아이폰(Safari) 앱 설치 안내"),
         btn("✕", () => setShowIosGuide(false), { background: "transparent", border: "none", color: C.mut, fontSize: 18, cursor: "pointer" })
       ),
       e("p", { style: { fontSize: 13, color: C.txt, lineHeight: 1.5, marginBottom: 16 } },
-        "사파리(Safari) 브라우저에서 아래 순서대로 누르면 홈 화면에 진짜 앱으로 설치됩니다:"
+        "사파리(Safari) 브라우저에서 아래 순서대로 누르면 주소창 없는 독립 앱으로 설치됩니다:"
       ),
       e("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 } },
         e("div", { style: { display: "flex", alignItems: "center", gap: 12, background: C.card, padding: "12px", borderRadius: 12, border: `1px solid ${C.bdr}` } },
@@ -1063,15 +1134,15 @@ function App() {
       e("div", { style: { background: C.card, borderRadius: 14, padding: "14px", border: `1px solid ${C.bdr}`, marginBottom: 16 } },
         e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 } },
           e("div", { style: { fontSize: 13, fontWeight: 700, color: C.wh } }, "📱 앱 설치 (PWA)"),
-          isStandalone && e("span", { style: { fontSize: 11, color: C.inc, fontWeight: 600 } }, "✅ 설치됨")
+          isStandalone && e("span", { style: { fontSize: 11, color: C.inc, fontWeight: 600 } }, "✅ 앱 모드 실행 중")
         ),
         isStandalone ?
-          e("p", { style: { fontSize: 12, color: C.mut } }, "현재 홈 화면에 설치된 단독 앱 모드로 실행 중입니다.") :
+          e("p", { style: { fontSize: 12, color: C.mut } }, "현재 브라우저 주소창이 없는 단독 실행형 앱(Standalone) 모드로 실행 중입니다.") :
           e("div", null,
             e("p", { style: { fontSize: 11, color: C.mut, marginBottom: 10, lineHeight: 1.4 } },
-              "스마트폰이나 PC에 설치하면 주소창 없이 진짜 앱처럼 오프라인에서도 훨씬 빠르고 편리하게 사용할 수 있습니다."
+              "홈 화면에 앱으로 설치하면 브라우저 주소창 없이 진짜 앱처럼 오프라인에서도 빠르고 쾌적하게 사용할 수 있습니다."
             ),
-            btn("📲 홈 화면에 가계부 앱 설치하기", handleInstallClick, {
+            btn(installPrompt ? "📲 지금 가계부 앱 설치하기" : "📲 앱 설치 안내 및 시작", handleInstallClick, {
               width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: C.acc, color: C.bg, fontWeight: 700, fontSize: 13, cursor: "pointer"
             })
           )
@@ -1311,8 +1382,8 @@ function App() {
         e("div", { style: { display: "flex", alignItems: "center", gap: 10, flex: 1 } },
           e("span", { style: { fontSize: 22 } }, "📲"),
           e("div", null,
-            e("div", { style: { fontSize: 12, fontWeight: 700, color: C.wh } }, "가계부를 홈 화면에 설치해 보세요!"),
-            e("div", { style: { fontSize: 11, color: C.mut } }, "브라우저 주소창 없이 앱으로 빠르고 쾌적하게")
+            e("div", { style: { fontSize: 12, fontWeight: 700, color: C.wh } }, "가계부를 홈 화면에 앱으로 설치하세요!"),
+            e("div", { style: { fontSize: 11, color: C.mut } }, "브라우저 주소창 없이 진짜 앱으로 실행됩니다")
           )
         ),
         e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
@@ -1344,6 +1415,7 @@ function App() {
     monthPickerEl,
     catManagerModal,
     syncModal,
+    samsungGuideModal,
     iosGuideModal,
     modalEl
   );
@@ -1351,24 +1423,25 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
+
+<!-- Service Worker Registration: Immediate & Fail-safe -->
 <script>
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js")
-      .then(reg => {
-        reg.onupdatefound = () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
-                console.log("새로운 PWA 버전이 설치되었습니다.");
-              }
-            };
-          }
-        };
+  function registerServiceWorker() {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" })
+      .then(function(reg) {
+        console.log("[PWA] Service Worker registered with scope:", reg.scope);
       })
-      .catch(err => console.log("Service Worker 등록 실패: ", err));
-  });
+      .catch(function(err) {
+        console.error("[PWA] Service Worker registration failed:", err);
+      });
+  }
+
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    registerServiceWorker();
+  } else {
+    window.addEventListener("load", registerServiceWorker);
+  }
 }
 </script>
 </body>
