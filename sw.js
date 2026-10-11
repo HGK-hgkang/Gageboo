@@ -1,4 +1,4 @@
-const CACHE = "gageboo-v5";
+const CACHE = "gageboo-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -26,6 +26,20 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
+  // Network first for index.html so updates are immediate, fallback to cache
+  if (e.request.mode === "navigate" || e.request.url.endsWith("index.html") || e.request.url.endsWith("/")) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;

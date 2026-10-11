@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json"/>
   <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f0e17'/%3E%3Ctext y='.9em' font-size='72' x='12'%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-is/18.2.0/umd/react-is.production.min.js"></script>
@@ -20,133 +20,22 @@
   <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; background: #0f0e17; }
-    body { font-family: 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; }
-    #root { height: 100%; }
-    input { font-family: 'Noto Sans KR', sans-serif; }
+    html, body { height: 100%; background: #0f0e17; color: #e2e0ef; }
+    body { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
+    #root { min-height: 100%; }
+    input, button, select { font-family: inherit; }
     input::placeholder { color: #7c7a9e; }
-    ::-webkit-scrollbar { display: none; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #2e2a45; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .anim-fade { animation: fadeIn 0.2s ease-out; }
   </style>
 </head>
-<!-- ===== 백업 / 복원 ===== -->
-<div id="backupBar" style="display:flex;gap:8px;justify-content:center;padding:16px;flex-wrap:wrap">
-  <button type="button" id="btnExport">백업 파일 저장</button>
-  <button type="button" id="btnImport">백업 파일 불러오기</button>
-  <button type="button" id="btnDedupe">중복 정리</button>
-  <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
-</div>
+<body>
+<div id="root"></div>
 
-<script>
-// 필드 순서와 무관하게 같은 내용이면 같은 문자로 만드는 함수 (이번 버그의 핵심 수정)
-function canonical(v){
-  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
-  if (v && typeof v === 'object') {
-    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
-  }
-  return JSON.stringify(v);
-}
-
-function mergeData(a, b){
-  if (Array.isArray(a) && Array.isArray(b)) {
-    const seen = new Set(), out = [];
-    for (const it of a.concat(b)) {
-      const k = canonical(it);
-      if (!seen.has(k)) { seen.add(k); out.push(it); }
-    }
-    return out;
-  }
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const out = Object.assign({}, a);
-    for (const k of Object.keys(b)) out[k] = (k in out) ? mergeData(out[k], b[k]) : b[k];
-    return out;
-  }
-  return (b === undefined || b === null) ? a : b;
-}
-
-// 이미 불어난 중복을 걷어내는 함수
-function dedupeAll(d){
-  if (Array.isArray(d)) {
-    const seen = new Set(), out = [];
-    for (const it of d) {
-      const k = canonical(it);
-      if (!seen.has(k)) { seen.add(k); out.push(dedupeAll(it)); }
-    }
-    return out;
-  }
-  if (d && typeof d === 'object') {
-    const out = {};
-    for (const k of Object.keys(d)) out[k] = dedupeAll(d[k]);
-    return out;
-  }
-  return d;
-}
-
-(function(){
-  const KEY = "gageboo-v1";
-  const countAll = d => canonical(d).split('"ts"').length - 1;
-
-  document.getElementById('btnExport').onclick = function(){
-    const raw  = localStorage.getItem(KEY) || "{}";
-    const blob = new Blob([raw], { type: "application/json" });
-    const url  = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const d = new Date(), p = n => String(n).padStart(2,'0');
-    a.href = url;
-    a.download = `gageboo-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  document.getElementById('btnDedupe').onclick = function(){
-    const cur = JSON.parse(localStorage.getItem(KEY) || "{}");
-    const before = countAll(cur);
-    const cleaned = dedupeAll(cur);
-    const after = countAll(cleaned);
-    if (!confirm(`기록 ${before}건 → ${after}건으로 정리합니다.\n진행할까요?`)) return;
-    localStorage.setItem(KEY, JSON.stringify(cleaned));
-    alert("정리 완료. 화면을 새로고침합니다.");
-    location.reload();
-  };
-
-  document.getElementById('btnImport').onclick = function(){
-    document.getElementById('fileImport').click();
-  };
-
-  document.getElementById('fileImport').onchange = function(e){
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = function(){
-      try {
-        const incoming = JSON.parse(r.result);
-        const current  = JSON.parse(localStorage.getItem(KEY) || "{}");
-        localStorage.setItem(KEY, JSON.stringify(dedupeAll(mergeData(current, incoming))));
-        alert("불러오기 완료. 화면을 새로고침합니다.");
-        location.reload();
-      } catch (err) {
-        alert("파일을 읽을 수 없습니다: " + err.message);
-      }
-    };
-    r.readAsText(f);
-    e.target.value = "";
-  };
-})();
-</script>
-<!-- ===== 서버 동기화 ===== -->
-<div id="syncBar" style="padding:12px;text-align:center;font-size:14px">
-  <div id="loginBox">
-    <input id="email" type="email" placeholder="이메일" autocomplete="username" style="padding:6px">
-    <input id="pw" type="password" placeholder="비밀번호" autocomplete="current-password" style="padding:6px">
-    <button type="button" id="btnLogin">로그인</button>
-  </div>
-  <div id="syncBox" style="display:none">
-    <span id="whoami" style="opacity:.8"></span>
-    <button type="button" id="btnSync">지금 동기화</button>
-    <button type="button" id="btnLogout">로그아웃</button>
-  </div>
-  <div id="syncStatus" style="opacity:.7;margin-top:6px"></div>
-</div>
-
+<!-- Firebase & Data Synchronization Engine -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -164,471 +53,1155 @@ const firebaseConfig = {
   appId: "1:815397849683:web:cbaf53b76a466e4dedd4a6"
 };
 
-const KEY  = "gageboo-v1";
-const app  = initializeApp(firebaseConfig);
+const KEY = "gageboo-v1";
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db   = getFirestore(app);
+const db = getFirestore(app);
 await setPersistence(auth, browserLocalPersistence);
 
-const $ = id => document.getElementById(id);
-const setStatus  = t => { const e = $('syncStatus'); if (e) e.textContent = t; };
-const readLocal  = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
-const writeLocal = d  => localStorage.setItem(KEY, JSON.stringify(d));
-
-// 새로고침 안전장치: 15초 안에 두 번 새로고침되는 일이 없도록 막음
-function safeReload(){
-  try {
-    const last = Number(sessionStorage.getItem('gb-lastReload') || 0);
-    if (Date.now() - last < 15000) {
-      setStatus("새 데이터 도착 — 직접 새로고침하면 반영됩니다");
-      return;
-    }
-    sessionStorage.setItem('gb-lastReload', String(Date.now()));
-  } catch (e) {}
-  location.reload();
+function canonical(v) {
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canonical(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v);
 }
 
-let user = null, busy = false;
+function mergeData(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    const seen = new Set(), out = [];
+    for (const it of a.concat(b)) {
+      const k = canonical(it);
+      if (!seen.has(k)) { seen.add(k); out.push(it); }
+    }
+    return out;
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    if (a.__type === 'categories' && b.__type === 'categories') {
+      return (b.updatedAt || 0) >= (a.updatedAt || 0) ? b : a;
+    }
+    const out = Object.assign({}, a);
+    for (const k of Object.keys(b)) out[k] = (k in out) ? mergeData(out[k], b[k]) : b[k];
+    return out;
+  }
+  return (b === undefined || b === null) ? a : b;
+}
 
-async function sync(){
-  if (!user || busy) return false;
-  busy = true;
+function dedupeAll(d) {
+  if (Array.isArray(d)) {
+    const seen = new Set(), out = [];
+    for (const it of d) {
+      const k = canonical(it);
+      if (!seen.has(k)) { seen.add(k); out.push(dedupeAll(it)); }
+    }
+    return out;
+  }
+  if (d && typeof d === 'object') {
+    if (d.__type === 'categories') return d;
+    const out = {};
+    for (const k of Object.keys(d)) out[k] = dedupeAll(d[k]);
+    return out;
+  }
+  return d;
+}
+
+const readLocal = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
+const writeLocal = d => localStorage.setItem(KEY, JSON.stringify(d));
+
+let currentUser = null;
+let isBusy = false;
+let syncListeners = [];
+
+function notifySync(status, user = currentUser) {
+  syncListeners.forEach(fn => fn({ status, user }));
+}
+
+async function doSync() {
+  if (!currentUser || isBusy) return false;
+  isBusy = true;
+  notifySync("동기화 중...");
   try {
-    setStatus("동기화 중…");
-    const ref    = doc(db, "users", user.uid);
-    const snap   = await getDoc(ref);
+    const ref = doc(db, "users", currentUser.uid);
+    const snap = await getDoc(ref);
     const remote = snap.exists() ? (snap.data().data || {}) : {};
-    const local  = readLocal();
+    const local = readLocal();
     const merged = mergeData(remote, local);
 
-    // 내용 기준으로 비교 (필드 순서 차이는 무시)
     const changedLocally = canonical(merged) !== canonical(local);
-    const changedRemote  = canonical(merged) !== canonical(remote);
+    const changedRemote = canonical(merged) !== canonical(remote);
 
-    if (changedLocally) writeLocal(merged);
-    if (changedRemote)  await setDoc(ref, { data: merged, updatedAt: Date.now() });
+    if (changedLocally) {
+      writeLocal(merged);
+      if (window.__onDataUpdated) window.__onDataUpdated(merged);
+    }
+    if (changedRemote) {
+      await setDoc(ref, { data: merged, updatedAt: Date.now() });
+    }
 
-    setStatus("동기화 완료 " + new Date().toLocaleTimeString('ko-KR'));
+    const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    notifySync(`동기화 완료 (${timeStr})`);
     return changedLocally;
   } catch (e) {
-    setStatus("동기화 실패: " + e.message);
+    notifySync("동기화 실패: " + e.message);
     return false;
-  } finally { busy = false; }
-}
-
-async function push(){
-  if (!user) return;
-  try {
-    await setDoc(doc(db, "users", user.uid), { data: readLocal(), updatedAt: Date.now() });
-    setStatus("저장됨 " + new Date().toLocaleTimeString('ko-KR'));
-  } catch (e) { setStatus("업로드 실패: " + e.message); }
-}
-
-const _saveRec = window.saveRec;
-if (typeof _saveRec === 'function') {
-  window.saveRec = function(d){
-    _saveRec(d);
-    clearTimeout(window.__syncTimer);
-    window.__syncTimer = setTimeout(push, 1500);
-  };
-}
-
-$('btnLogin').onclick = async () => {
-  const em = $('email').value.trim(), pw = $('pw').value;
-  try { await signInWithEmailAndPassword(auth, em, pw); }
-  catch (e) {
-    if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-      if (confirm("처음이신가요? 이 이메일로 계정을 새로 만들까요?")) {
-        try { await createUserWithEmailAndPassword(auth, em, pw); }
-        catch (e2) { setStatus("가입 실패: " + e2.message); }
-      }
-    } else { setStatus("로그인 실패: " + e.message); }
+  } finally {
+    isBusy = false;
   }
+}
+
+async function doPush() {
+  if (!currentUser) return;
+  try {
+    await setDoc(doc(db, "users", currentUser.uid), { data: readLocal(), updatedAt: Date.now() });
+    const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    notifySync(`저장됨 (${timeStr})`);
+  } catch (e) {
+    notifySync("업로드 실패: " + e.message);
+  }
+}
+
+let pushDebounce = null;
+window.__triggerSyncPush = function() {
+  clearTimeout(pushDebounce);
+  pushDebounce = setTimeout(doPush, 1200);
 };
-$('btnLogout').onclick = () => signOut(auth);
-$('btnSync').onclick   = async () => { if (await sync()) safeReload(); };
 
 onAuthStateChanged(auth, async u => {
-  user = u;
-  $('loginBox').style.display = u ? 'none' : '';
-  $('syncBox').style.display  = u ? ''     : 'none';
-  if (!u) { setStatus("로그아웃 상태 — 이 기기에만 저장됩니다"); return; }
-  $('whoami').textContent = u.email + " ";
-  if (await sync()) safeReload();
+  currentUser = u;
+  if (!u) {
+    notifySync("오프라인 (기기 로컬 저장)");
+  } else {
+    notifySync("연결됨: " + u.email);
+    await doSync();
+  }
 });
 
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && user) {
-    if (await sync()) safeReload();
+  if (document.visibilityState === 'visible' && currentUser) {
+    await doSync();
   }
 });
+
+// Global API bridge for React
+window.GagebooFirebase = {
+  getAuth: () => auth,
+  getCurrentUser: () => currentUser,
+  login: async (email, pw) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, pw);
+      return { ok: true };
+    } catch (e) {
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+        const create = confirm("계정이 없습니다. 이 이메일과 비밀번호로 새로 가입할까요?");
+        if (create) {
+          try {
+            await createUserWithEmailAndPassword(auth, email, pw);
+            return { ok: true };
+          } catch (e2) {
+            return { ok: false, msg: "가입 실패: " + e2.message };
+          }
+        }
+      }
+      return { ok: false, msg: "로그인 실패: " + e.message };
+    }
+  },
+  logout: async () => {
+    await signOut(auth);
+  },
+  syncNow: async () => {
+    return await doSync();
+  },
+  subscribeSync: (fn) => {
+    syncListeners.push(fn);
+    fn({ status: currentUser ? "연결됨" : "오프라인 (기기 로컬 저장)", user: currentUser });
+    return () => { syncListeners = syncListeners.filter(l => l !== fn); };
+  },
+  exportData: () => {
+    const raw = localStorage.getItem(KEY) || "{}";
+    const blob = new Blob([raw], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    a.href = url;
+    a.download = `gageboo-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  importData: (file, onSuccess, onError) => {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const incoming = JSON.parse(r.result);
+        const current = readLocal();
+        const merged = dedupeAll(mergeData(current, incoming));
+        writeLocal(merged);
+        if (window.__onDataUpdated) window.__onDataUpdated(merged);
+        window.__triggerSyncPush();
+        onSuccess && onSuccess();
+      } catch (err) {
+        onError && onError(err.message);
+      }
+    };
+    r.readAsText(file);
+  },
+  dedupeData: () => {
+    const cur = readLocal();
+    const cleaned = dedupeAll(cur);
+    writeLocal(cleaned);
+    if (window.__onDataUpdated) window.__onDataUpdated(cleaned);
+    window.__triggerSyncPush();
+    return true;
+  }
+};
 </script>
-  
-<body>
-<div id="root"></div>
+
+<!-- Application Logic -->
 <script>
 const e = React.createElement;
 const { useState, useMemo, useEffect } = React;
 const RC = window.Recharts;
+
 if (!RC) {
   document.getElementById("root").innerHTML =
-    '<div style="padding:24px;color:#e2e0ef;font-family:sans-serif;text-align:center">' +
-    '<p style="font-size:16px;margin-bottom:8px">차트 라이브러리를 불러오지 못했습니다.</p>' +
-    '<p style="font-size:13px;color:#7c7a9e">인터넷 연결을 확인한 뒤 새로고침해 주세요.</p></div>';
-  throw new Error("Recharts failed to load");
+    '<div style="padding:40px 20px;color:#e2e0ef;text-align:center">' +
+    '<p style="font-size:16px;margin-bottom:8px">차트 라이브러리를 불러오는 중입니다...</p>' +
+    '<p style="font-size:13px;color:#7c7a9e">화면이 유지되면 인터넷 연결을 확인 후 새로고침해 주세요.</p></div>';
 }
 
 const STORAGE_KEY = "gageboo-v1";
-function loadRec() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); } catch { return {}; } }
-function saveRec(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} }
+function loadRec() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; } }
+function saveRec(d) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+    if (window.__triggerSyncPush) window.__triggerSyncPush();
+  } catch {}
+}
+
+const DEFAULT_EXPENSE_CATS = [
+  { id: "food", l: "식비", i: "🍚" },
+  { id: "cafe", l: "카페", i: "☕" },
+  { id: "transport", l: "교통", i: "🚌" },
+  { id: "shopping", l: "쇼핑", i: "🛍️" },
+  { id: "health", l: "건강", i: "💊" },
+  { id: "housing", l: "주거", i: "🏠" },
+  { id: "comm", l: "통신", i: "📱" },
+  { id: "culture", l: "문화", i: "🎭" },
+  { id: "etc", l: "기타", i: "💡" }
+];
+
+const DEFAULT_INCOME_CATS = [
+  { id: "allowance", l: "용돈", i: "💵" },
+  { id: "salary", l: "급여", i: "💼" },
+  { id: "bonus", l: "보너스", i: "🎁" },
+  { id: "invest", l: "투자", i: "📈" },
+  { id: "side", l: "부업", i: "🔧" },
+  { id: "etc", l: "기타", i: "💰" }
+];
+
+const EMOJI_PALETTE = [
+  "🍚","☕","🥪","🍔","🍕","🍜","🍻","🚗","🚌","🚕","⛽","✈️",
+  "🛍️","🛒","🎁","💊","🏥","🏠","💡","📱","💻","🎮","🎬","📚",
+  "🏋️","🐶","🐱","👶","💄","💅","💇","📦","💵","💼","📈","🔧","💰"
+];
+
+const CHART_COLORS = [
+  "#f87171", "#fb923c", "#fbbf24", "#34d399", "#22d3ee",
+  "#818cf8", "#a78bfa", "#f472b6", "#38bdf8", "#4ade80",
+  "#e879f9", "#cbd5e1"
+];
 
 const MONTHS = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 const DAYS   = ["일","월","화","수","목","금","토"];
-const fmt = n => n.toLocaleString("ko-KR")+"원";
+const fmt = n => (n || 0).toLocaleString("ko-KR") + "원";
 const fmtS = n => {
-  const a = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
+  const a = Math.abs(n || 0);
+  const sign = (n || 0) < 0 ? "-" : "";
   if (a >= 1e8) return sign + (a / 1e8).toFixed(1) + "억";
   if (a >= 1e4) return sign + (a / 1e4).toFixed(1) + "만";
-  return n.toLocaleString();
+  return (n || 0).toLocaleString();
 };
-const dim = (y,m) => new Date(y,m+1,0).getDate();
-const fd  = (y,m) => new Date(y,m,1).getDay();
-
-const ECAT = [
-  {id:"food",l:"식비",i:"🍚"},{id:"cafe",l:"카페",i:"☕"},{id:"transport",l:"교통",i:"🚌"},
-  {id:"shopping",l:"쇼핑",i:"🛍️"},{id:"health",l:"건강",i:"💊"},{id:"housing",l:"주거",i:"🏠"},
-  {id:"comm",l:"통신",i:"📱"},{id:"culture",l:"문화",i:"🎭"},{id:"etc",l:"기타",i:"💡"}
-];
-const ICAT = [
-  {id:"allowance",l:"용돈",i:"💵"},{id:"salary",l:"급여",i:"💼"},{id:"bonus",l:"보너스",i:"🎁"},
-  {id:"invest",l:"투자",i:"📈"},{id:"side",l:"부업",i:"🔧"},{id:"etc",l:"기타",i:"💰"}
-];
+const dim = (y,m) => new Date(y, m+1, 0).getDate();
+const fd  = (y,m) => new Date(y, m, 1).getDay();
 
 const C = {
-  bg:"#0f0e17",surf:"#1a1828",card:"#221f35",bdr:"#2e2a45",
-  acc:"#a78bfa",inc:"#34d399",exp:"#f87171",
-  txt:"#e2e0ef",mut:"#7c7a9e",wh:"#ffffff"
+  bg: "#0f0e17", surf: "#1a1828", card: "#221f35", bdr: "#2e2a45",
+  acc: "#a78bfa", inc: "#34d399", exp: "#f87171",
+  txt: "#e2e0ef", mut: "#7c7a9e", wh: "#ffffff"
 };
-
-const s = (obj) => obj; // style passthrough
 
 function App() {
   const now = new Date();
-  const [view, setView]   = useState("calendar");
-  const [year, setYear]   = useState(now.getFullYear());
+  const [view, setView] = useState("calendar"); // "calendar" | "analytics"
+  const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
-  const [recs, setRecs]   = useState(loadRec);
-  const [selDay, setSel]  = useState(null);
+  const [recs, setRecs] = useState(loadRec);
+  
+  // Analytics specific month selector
+  const [anYear, setAnYear] = useState(now.getFullYear());
+  const [anMonth, setAnMonth] = useState(now.getMonth());
+  const [selectedCatDetail, setSelectedCatDetail] = useState(null);
+
+  // Modals
+  const [selDay, setSel] = useState(null);
   const [modal, setModal] = useState(false);
   const [showAdd, setAdd] = useState(false);
-  const [aType, setAType] = useState("expense");
-  const [aAmt,  setAAmt]  = useState("");
-  const [aCat,  setACat]  = useState("");
-  const [aMemo, setAMemo] = useState("");
   const [showMonthPicker, setMonthPicker] = useState(false);
   const [pickYear, setPickYear] = useState(now.getFullYear());
+  const [monthPickerTarget, setMonthPickerTarget] = useState("calendar"); // "calendar" | "analytics"
 
+  // Category Manager Modal
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [catMgrTab, setCatMgrTab] = useState("expense"); // "expense" | "income"
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatEmoji, setNewCatEmoji] = useState("💡");
+
+  // Sync / Settings Drawer Modal
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncState, setSyncState] = useState({ status: "연결 확인 중...", user: null });
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPw, setLoginPw] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  // Transaction form states
+  const [aType, setAType] = useState("expense");
+  const [aAmt, setAAmt] = useState("");
+  const [aCat, setACat] = useState("");
+  const [aMemo, setAMemo] = useState("");
+
+  // Subscribe to Firebase sync changes
+  useEffect(() => {
+    window.__onDataUpdated = (newData) => {
+      setRecs(newData);
+    };
+    if (window.GagebooFirebase) {
+      const unsub = window.GagebooFirebase.subscribeSync(state => {
+        setSyncState(state);
+      });
+      return () => unsub();
+    }
+  }, []);
+
+  // Extract Categories
+  const customCats = recs["__categories__"] || {};
+  const expenseCats = customCats.expense || DEFAULT_EXPENSE_CATS;
+  const incomeCats = customCats.income || DEFAULT_INCOME_CATS;
+
+  // Active categories for transaction
+  const cats = aType === "expense" ? expenseCats : incomeCats;
+
+  const getCatInfo = (catId, type = "expense") => {
+    const list = type === "income" ? incomeCats : expenseCats;
+    const found = list.find(c => c.id === catId);
+    if (found) return found;
+    // Check the other list just in case
+    const alt = (type === "income" ? expenseCats : incomeCats).find(c => c.id === catId);
+    if (alt) return alt;
+    return { id: catId, l: catId || "기타", i: "💡" };
+  };
+
+  // Month data
   const mk = `${year}-${String(month+1).padStart(2,"0")}`;
-  const mr = useMemo(()=>recs[mk]||{},[recs,mk]);
+  const mr = useMemo(() => recs[mk] || {}, [recs, mk]);
 
-  const sum = useMemo(()=>{
-    let inc=0,exp=0;
-    Object.values(mr).forEach(a=>a.forEach(r=>r.type==="income"?inc+=r.amount:exp+=r.amount));
-    return {inc,exp,bal:inc-exp};
-  },[mr]);
+  const sum = useMemo(() => {
+    let inc = 0, exp = 0;
+    Object.values(mr).forEach(a => {
+      if (Array.isArray(a)) {
+        a.forEach(r => r.type === "income" ? inc += r.amount : exp += r.amount);
+      }
+    });
+    return { inc, exp, bal: inc - exp };
+  }, [mr]);
 
-  const totalD = dim(year,month);
-  const startD = fd(year,month);
+  const totalD = dim(year, month);
+  const startD = fd(year, month);
   const cells = [];
-  for(let i=0;i<startD;i++) cells.push(null);
-  for(let d=1;d<=totalD;d++) cells.push(d);
+  for (let i = 0; i < startD; i++) cells.push(null);
+  for (let d = 1; d <= totalD; d++) cells.push(d);
 
   function daySum(d) {
-    const a=mr[String(d)]||[]; let inc=0,exp=0;
-    a.forEach(r=>r.type==="income"?inc+=r.amount:exp+=r.amount);
-    return {inc,exp};
+    const a = mr[String(d)] || [];
+    let inc = 0, exp = 0;
+    if (Array.isArray(a)) {
+      a.forEach(r => r.type === "income" ? inc += r.amount : exp += r.amount);
+    }
+    return { inc, exp };
   }
 
-  function prevM() { if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1); }
-  function nextM() { if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1); }
+  function prevM() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); }
+  function nextM() { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); }
 
-  function openMonthPicker() { setPickYear(year); setMonthPicker(true); }
-  function selectMonth(m) { setYear(pickYear); setMonth(m); setMonthPicker(false); }
+  function openMonthPicker(target = "calendar") {
+    setMonthPickerTarget(target);
+    setPickYear(target === "calendar" ? year : anYear);
+    setMonthPicker(true);
+  }
+
+  function selectMonth(m) {
+    if (monthPickerTarget === "calendar") {
+      setYear(pickYear);
+      setMonth(m);
+    } else {
+      setAnYear(pickYear);
+      setAnMonth(m);
+      setSelectedCatDetail(null);
+    }
+    setMonthPicker(false);
+  }
+
   function goToday() {
-    setYear(now.getFullYear()); setMonth(now.getMonth()); setMonthPicker(false);
+    if (monthPickerTarget === "calendar") {
+      setYear(now.getFullYear());
+      setMonth(now.getMonth());
+    } else {
+      setAnYear(now.getFullYear());
+      setAnMonth(now.getMonth());
+      setSelectedCatDetail(null);
+    }
+    setMonthPicker(false);
   }
 
+  // Save Transaction
   function doSave() {
-    const amt=parseInt(aAmt.replace(/[^0-9]/g,""),10);
-    if(!amt||amt<=0) return;
-    const cat=aCat||"etc";
-    const rec={type:aType,amount:amt,category:cat,memo:aMemo,ts:Date.now()};
-    const k=String(selDay);
-    const upd={...recs,[mk]:{...mr,[k]:[...(mr[k]||[]),rec]}};
-    setRecs(upd); saveRec(upd);
+    const amt = parseInt(aAmt.replace(/[^0-9]/g, ""), 10);
+    if (!amt || amt <= 0) return;
+    const cat = aCat || (cats[0] ? cats[0].id : "etc");
+    const rec = { type: aType, amount: amt, category: cat, memo: aMemo, ts: Date.now() };
+    const k = String(selDay);
+    const upd = { ...recs, [mk]: { ...mr, [k]: [...(mr[k] || []), rec] } };
+    setRecs(upd);
+    saveRec(upd);
     setAAmt(""); setAMemo(""); setACat(""); setAdd(false);
   }
 
-  function doDel(dk,idx) {
-    const a=[...(mr[dk]||[])]; a.splice(idx,1);
-    const upd={...recs,[mk]:{...mr,[dk]:a}};
-    setRecs(upd); saveRec(upd);
+  // Delete Transaction
+  function doDel(dk, idx) {
+    const a = [...(mr[dk] || [])];
+    a.splice(idx, 1);
+    const upd = { ...recs, [mk]: { ...mr, [dk]: a } };
+    setRecs(upd);
+    saveRec(upd);
   }
 
   function onAmt(ev) {
-    const raw=ev.target.value.replace(/[^0-9]/g,"");
-    setAAmt(raw?parseInt(raw,10).toLocaleString():"");
+    const raw = ev.target.value.replace(/[^0-9]/g, "");
+    setAAmt(raw ? parseInt(raw, 10).toLocaleString() : "");
   }
 
-  const analytics = useMemo(()=>{
-    const data=[];
-    for(let i=5;i>=0;i--){
-      let m=month-i, y=year;
-      if(m<0){m+=12;y-=1;}
-      const key=`${y}-${String(m+1).padStart(2,"0")}`;
-      const mrd=recs[key]||{}; let inc=0,exp=0;
-      Object.values(mrd).forEach(a=>a.forEach(r=>r.type==="income"?inc+=r.amount:exp+=r.amount));
-      data.push({label:`${m+1}월`,income:inc,expense:exp,balance:inc-exp});
+  // Save Categories
+  function handleAddCategory() {
+    const name = newCatName.trim();
+    if (!name) return;
+    const isExp = catMgrTab === "expense";
+    const currentList = isExp ? [...expenseCats] : [...incomeCats];
+    if (currentList.some(c => c.l === name)) {
+      alert("이미 같은 이름의 카테고리가 존재합니다.");
+      return;
+    }
+    const newId = "cat_" + Date.now().toString(36);
+    const newCat = { id: newId, l: name, i: newCatEmoji || "💡" };
+    currentList.push(newCat);
+
+    const updatedCategoryObj = {
+      __type: "categories",
+      updatedAt: Date.now(),
+      expense: isExp ? currentList : expenseCats,
+      income: isExp ? incomeCats : currentList
+    };
+
+    const upd = { ...recs, __categories__: updatedCategoryObj };
+    setRecs(upd);
+    saveRec(upd);
+    setNewCatName("");
+  }
+
+  function handleDeleteCategory(catId) {
+    if (catId === "etc") {
+      alert("기타 카테고리는 기본 카테고리이므로 삭제할 수 없습니다.");
+      return;
+    }
+    const isExp = catMgrTab === "expense";
+    const currentList = isExp ? [...expenseCats] : [...incomeCats];
+    const target = currentList.find(c => c.id === catId);
+    if (!confirm(`'${target ? target.l : "카테고리"}'를 삭제하시겠습니까?\n(기존에 등록된 내역은 유지됩니다)`)) return;
+
+    const filtered = currentList.filter(c => c.id !== catId);
+    const updatedCategoryObj = {
+      __type: "categories",
+      updatedAt: Date.now(),
+      expense: isExp ? filtered : expenseCats,
+      income: isExp ? incomeCats : filtered
+    };
+
+    const upd = { ...recs, __categories__: updatedCategoryObj };
+    setRecs(upd);
+    saveRec(upd);
+  }
+
+  // --- ANALYTICS COMPUTATIONS ---
+  // 1. Monthly Category Breakdown for selected month (anYear, anMonth)
+  const anKey = `${anYear}-${String(anMonth+1).padStart(2,"0")}`;
+  const anMonthRecs = recs[anKey] || {};
+
+  const monthlyCategoryAnalysis = useMemo(() => {
+    const catMap = {};
+    let totalExpense = 0;
+    let totalIncome = 0;
+
+    Object.entries(anMonthRecs).forEach(([day, items]) => {
+      if (Array.isArray(items)) {
+        items.forEach(r => {
+          if (r.type === "expense") {
+            totalExpense += r.amount;
+            if (!catMap[r.category]) {
+              catMap[r.category] = { id: r.category, amount: 0, count: 0, items: [] };
+            }
+            catMap[r.category].amount += r.amount;
+            catMap[r.category].count += 1;
+            catMap[r.category].items.push({ ...r, day: parseInt(day, 10) });
+          } else if (r.type === "income") {
+            totalIncome += r.amount;
+          }
+        });
+      }
+    });
+
+    const list = Object.values(catMap).map(c => {
+      const info = getCatInfo(c.id, "expense");
+      const pct = totalExpense > 0 ? (c.amount / totalExpense) * 100 : 0;
+      // Sort transactions by day ascending
+      c.items.sort((a, b) => a.day - b.day);
+      return {
+        id: c.id,
+        name: info.l,
+        icon: info.i,
+        amount: c.amount,
+        count: c.count,
+        percent: pct,
+        items: c.items
+      };
+    });
+
+    // Sort by amount descending
+    list.sort((a, b) => b.amount - a.amount);
+
+    return {
+      totalExpense,
+      totalIncome,
+      balance: totalIncome - totalExpense,
+      categories: list
+    };
+  }, [anMonthRecs, expenseCats, incomeCats]);
+
+  // 2. 6-Month Trend Data
+  const trendData = useMemo(() => {
+    const data = [];
+    for (let i = 5; i >= 0; i--) {
+      let m = anMonth - i, y = anYear;
+      if (m < 0) { m += 12; y -= 1; }
+      const key = `${y}-${String(m+1).padStart(2,"0")}`;
+      const mrd = recs[key] || {};
+      let inc = 0, exp = 0;
+      Object.values(mrd).forEach(a => {
+        if (Array.isArray(a)) {
+          a.forEach(r => r.type === "income" ? inc += r.amount : exp += r.amount);
+        }
+      });
+      data.push({ label: `${m+1}월`, income: inc, expense: exp, balance: inc - exp });
     }
     return data;
-  },[recs,year,month]);
+  }, [recs, anYear, anMonth]);
 
-  const cats = aType==="expense"?ECAT:ICAT;
-
-  // ── helpers ──
-  const btn = (text, onClick, extra={}) =>
-    e("button",{onClick, style:{fontFamily:"'Noto Sans KR',sans-serif",...extra}},text);
+  // UI Helpers
+  const btn = (text, onClick, extra = {}) =>
+    e("button", { onClick, style: { fontFamily: "'Noto Sans KR', sans-serif", ...extra } }, text);
 
   const summaryCards = (items) =>
-    e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,padding:"16px 20px"}},
-      ...items.map(s=>
-        e("div",{key:s.l,style:{background:C.card,borderRadius:14,padding:"12px 10px",textAlign:"center",border:`1px solid ${C.bdr}`}},
-          e("div",{style:{fontSize:11,color:C.mut,marginBottom:4}},s.l),
-          e("div",{style:{fontSize:s.sm||11,fontWeight:700,color:s.c}},fmtS(s.v))
+    e("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "14px 20px" } },
+      ...items.map(s =>
+        e("div", { key: s.l, style: { background: C.card, borderRadius: 14, padding: "12px 8px", textAlign: "center", border: `1px solid ${C.bdr}` } },
+          e("div", { style: { fontSize: 11, color: C.mut, marginBottom: 4 } }, s.l),
+          e("div", { style: { fontSize: s.sm || 11, fontWeight: 700, color: s.c } }, fmtS(s.v))
         )
       )
     );
 
-  // ── CALENDAR ──
-  const calendarView = e("div",null,
-    // month nav
-    e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"18px 20px 0"}},
-      btn("‹",prevM,{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}),
-      e("button",{
-        onClick: openMonthPicker,
-        style:{fontFamily:"'Noto Sans KR',sans-serif",background:"transparent",border:"none",cursor:"pointer",
-          fontSize:18,fontWeight:700,color:C.wh,padding:"4px 12px",borderRadius:10}
-      },`${year}년 ${MONTHS[month]}`),
-      btn("›",nextM,{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"})
+  // ── CALENDAR VIEW ──
+  const calendarView = e("div", { className: "anim-fade" },
+    // Month nav
+    e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 20px 0" } },
+      btn("‹", prevM, { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 10, width: 36, height: 36, fontSize: 20, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }),
+      e("button", {
+        onClick: () => openMonthPicker("calendar"),
+        style: { fontFamily: "'Noto Sans KR', sans-serif", background: "transparent", border: "none", cursor: "pointer", fontSize: 18, fontWeight: 700, color: C.wh, padding: "4px 12px", borderRadius: 10 }
+      }, `${year}년 ${MONTHS[month]}`),
+      btn("›", nextM, { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 10, width: 36, height: 36, fontSize: 20, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" })
     ),
-    // summary
-    summaryCards([{l:"수입",v:sum.inc,c:C.inc},{l:"지출",v:sum.exp,c:C.exp},{l:"잔액",v:sum.bal,c:C.acc}]),
-    // weekday headers
-    e("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",padding:"0 14px",marginBottom:6}},
-      ...DAYS.map((d,i)=>e("div",{key:d,style:{textAlign:"center",fontSize:11,fontWeight:600,paddingBottom:4,color:i===0?"#f87171":i===6?"#60a5fa":C.mut}},d))
+    summaryCards([{ l: "수입", v: sum.inc, c: C.inc }, { l: "지출", v: sum.exp, c: C.exp }, { l: "잔액", v: sum.bal, c: C.acc }]),
+    // Weekday headers
+    e("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", padding: "0 14px", marginBottom: 6 } },
+      ...DAYS.map((d, i) => e("div", { key: d, style: { textAlign: "center", fontSize: 11, fontWeight: 600, paddingBottom: 4, color: i === 0 ? "#f87171" : i === 6 ? "#60a5fa" : C.mut } }, d))
     ),
-    // grid
-    e("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,padding:"0 14px 120px"}},
-      ...cells.map((d,i)=>{
-        if(!d) return e("div",{key:"e"+i});
-        const {inc,exp}=daySum(d);
-        const isT=d===now.getDate()&&month===now.getMonth()&&year===now.getFullYear();
-        const dow=(startD+d-1)%7;
-        return e("div",{
-          key:d,
-          onClick:()=>{setSel(d);setModal(true);setAdd(false);},
-          style:{background:isT?C.acc+"22":C.card,border:isT?`1.5px solid ${C.acc}`:`1px solid ${C.bdr}`,
-            borderRadius:12,padding:"8px 4px 6px",cursor:"pointer",minHeight:68,
-            display:"flex",flexDirection:"column",alignItems:"center"}
+    // Calendar Grid
+    e("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, padding: "0 14px 120px" } },
+      ...cells.map((d, i) => {
+        if (!d) return e("div", { key: "e" + i });
+        const { inc, exp } = daySum(d);
+        const isT = d === now.getDate() && month === now.getMonth() && year === now.getFullYear();
+        const dow = (startD + d - 1) % 7;
+        return e("div", {
+          key: d,
+          onClick: () => { setSel(d); setModal(true); setAdd(false); },
+          style: {
+            background: isT ? C.acc + "22" : C.card,
+            border: isT ? `1.5px solid ${C.acc}` : `1px solid ${C.bdr}`,
+            borderRadius: 12, padding: "8px 4px 6px", cursor: "pointer", minHeight: 68,
+            display: "flex", flexDirection: "column", alignItems: "center"
+          }
         },
-          e("span",{style:{fontSize:13,fontWeight:700,color:dow===0?"#f87171":dow===6?"#60a5fa":C.txt}},d),
-          inc>0&&e("span",{style:{fontSize:8,color:C.inc,marginTop:2,fontWeight:600}},"+"+fmtS(inc)),
-          exp>0&&e("span",{style:{fontSize:8,color:C.exp,marginTop:1,fontWeight:600}},"-"+fmtS(exp))
+          e("span", { style: { fontSize: 13, fontWeight: 700, color: dow === 0 ? "#f87171" : dow === 6 ? "#60a5fa" : C.txt } }, d),
+          inc > 0 && e("span", { style: { fontSize: 8, color: C.inc, marginTop: 2, fontWeight: 600 } }, "+" + fmtS(inc)),
+          exp > 0 && e("span", { style: { fontSize: 8, color: C.exp, marginTop: 1, fontWeight: 600 } }, "-" + fmtS(exp))
         );
       })
     )
   );
 
-  // ── ANALYTICS ──
-  const analyticsView = e("div",{style:{padding:"16px 16px 120px"}},
-    e("div",{style:{marginTop:18,marginBottom:16}},
-      e("span",{style:{fontSize:18,fontWeight:700,color:C.wh}},"최근 6개월 추이")
+  // ── ANALYTICS VIEW ──
+  const analyticsView = e("div", { className: "anim-fade", style: { padding: "16px 16px 120px" } },
+    // Month selector header
+    e("div", { style: { background: C.card, borderRadius: 16, padding: "12px 16px", border: `1px solid ${C.bdr}`, marginBottom: 16 } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
+        btn("‹", () => {
+          if (anMonth === 0) { setAnMonth(11); setAnYear(y => y - 1); }
+          else setAnMonth(m => m - 1);
+          setSelectedCatDetail(null);
+        }, { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }),
+        e("div", {
+          onClick: () => openMonthPicker("analytics"),
+          style: { cursor: "pointer", textAlign: "center" }
+        },
+          e("div", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, `${anYear}년 ${MONTHS[anMonth]}`),
+          e("div", { style: { fontSize: 11, color: C.acc, marginTop: 2 } }, "월 변경 ▾")
+        ),
+        btn("›", () => {
+          if (anMonth === 11) { setAnMonth(0); setAnYear(y => y + 1); }
+          else setAnMonth(m => m + 1);
+          setSelectedCatDetail(null);
+        }, { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" })
+      )
     ),
-    summaryCards([{l:"이번달 수입",v:sum.inc,c:C.inc},{l:"이번달 지출",v:sum.exp,c:C.exp},{l:"이번달 잔액",v:sum.bal,c:C.acc}]),
-    // income/expense chart
-    e("div",{style:{background:C.card,borderRadius:16,padding:"16px 8px",border:`1px solid ${C.bdr}`,marginBottom:16}},
-      e("div",{style:{fontSize:13,fontWeight:700,color:C.wh,paddingLeft:12,marginBottom:12}},"수입 / 지출 추이"),
-      e(RC.ResponsiveContainer,{width:"100%",height:200},
-        e(RC.LineChart,{data:analytics,margin:{top:5,right:16,left:0,bottom:5}},
-          e(RC.CartesianGrid,{strokeDasharray:"3 3",stroke:C.bdr}),
-          e(RC.XAxis,{dataKey:"label",tick:{fill:C.mut,fontSize:11},axisLine:false,tickLine:false}),
-          e(RC.YAxis,{tickFormatter:fmtS,tick:{fill:C.mut,fontSize:10},axisLine:false,tickLine:false,width:46}),
-          e(RC.Tooltip,{contentStyle:{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:10,fontSize:12},
-            labelStyle:{color:C.wh,fontWeight:700},
-            formatter:(v,n)=>[fmt(v),n==="income"?"수입":"지출"]}),
-          e(RC.Legend,{formatter:v=>v==="income"?"수입":"지출",wrapperStyle:{fontSize:12,color:C.mut}}),
-          e(RC.Line,{type:"monotone",dataKey:"income",stroke:C.inc,strokeWidth:2,dot:{r:4,fill:C.inc},name:"income"}),
-          e(RC.Line,{type:"monotone",dataKey:"expense",stroke:C.exp,strokeWidth:2,dot:{r:4,fill:C.exp},name:"expense"})
+
+    // Month summary cards
+    summaryCards([
+      { l: `${anMonth + 1}월 수입`, v: monthlyCategoryAnalysis.totalIncome, c: C.inc },
+      { l: `${anMonth + 1}월 지출`, v: monthlyCategoryAnalysis.totalExpense, c: C.exp },
+      { l: `${anMonth + 1}월 잔액`, v: monthlyCategoryAnalysis.balance, c: C.acc }
+    ]),
+
+    // Category Expense Breakdown Card
+    e("div", { style: { background: C.card, borderRadius: 18, padding: "20px 16px", border: `1px solid ${C.bdr}`, marginBottom: 20 } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } },
+        e("div", { style: { fontSize: 15, fontWeight: 700, color: C.wh } }, `📊 ${anMonth + 1}월 카테고리별 지출 분석`),
+        btn("⚙️ 카테고리 관리", () => setShowCatManager(true), {
+          background: "transparent", border: `1px solid ${C.bdr}`, color: C.mut, borderRadius: 12, padding: "4px 10px", fontSize: 11, cursor: "pointer"
+        })
+      ),
+
+      monthlyCategoryAnalysis.totalExpense === 0 ?
+        e("div", { style: { textAlign: "center", padding: "36px 0", color: C.mut } },
+          e("div", { style: { fontSize: 32, marginBottom: 8 } }, "💸"),
+          e("p", { style: { fontSize: 14 } }, `${anMonth + 1}월에는 지출 내역이 없습니다.`)
+        ) :
+        e("div", null,
+          // Donut Pie Chart
+          e(RC.ResponsiveContainer, { width: "100%", height: 210 },
+            e(RC.PieChart, null,
+              e(RC.Pie, {
+                data: monthlyCategoryAnalysis.categories,
+                dataKey: "amount",
+                nameKey: "name",
+                cx: "50%",
+                cy: "50%",
+                innerRadius: 52,
+                outerRadius: 82,
+                paddingAngle: 3
+              },
+                ...monthlyCategoryAnalysis.categories.map((entry, idx) =>
+                  e(RC.Cell, { key: entry.id, fill: CHART_COLORS[idx % CHART_COLORS.length], stroke: C.surf, strokeWidth: 1.5 })
+                )
+              ),
+              e(RC.Tooltip, {
+                contentStyle: { background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, fontSize: 12 },
+                labelStyle: { color: C.wh, fontWeight: 700 },
+                formatter: (val, name) => [
+                  `${fmt(val)} (${((val / monthlyCategoryAnalysis.totalExpense) * 100).toFixed(1)}%)`,
+                  name
+                ]
+              })
+            )
+          ),
+
+          // Total spent banner
+          e("div", { style: { textAlign: "center", marginBottom: 16 } },
+            e("span", { style: { fontSize: 12, color: C.mut } }, `총 지출 합계: `),
+            e("span", { style: { fontSize: 15, fontWeight: 700, color: C.exp } }, fmt(monthlyCategoryAnalysis.totalExpense))
+          ),
+
+          // Category list with ranking and progress bars
+          e("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+            ...monthlyCategoryAnalysis.categories.map((cat, idx) => {
+              const color = CHART_COLORS[idx % CHART_COLORS.length];
+              const isSelected = selectedCatDetail === cat.id;
+              const rankBadge = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`;
+
+              return e("div", {
+                key: cat.id,
+                onClick: () => setSelectedCatDetail(isSelected ? null : cat.id),
+                style: {
+                  background: isSelected ? C.surf : C.bg + "88",
+                  border: isSelected ? `1.5px solid ${color}` : `1px solid ${C.bdr}`,
+                  borderRadius: 14, padding: "12px 14px", cursor: "pointer", transition: "all 0.15s ease"
+                }
+              },
+                // Category header row
+                e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 } },
+                  e("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    e("span", { style: { fontSize: 12, fontWeight: 700, width: 22, color: C.mut } }, rankBadge),
+                    e("span", { style: { fontSize: 18 } }, cat.icon),
+                    e("span", { style: { fontSize: 14, fontWeight: 600, color: C.wh } }, cat.name),
+                    e("span", { style: { fontSize: 11, color: C.mut } }, `(${cat.count}건)`)
+                  ),
+                  e("div", { style: { textAlign: "right" } },
+                    e("div", { style: { fontSize: 14, fontWeight: 700, color: C.wh } }, fmt(cat.amount)),
+                    e("div", { style: { fontSize: 11, fontWeight: 600, color } }, `${cat.percent.toFixed(1)}%`)
+                  )
+                ),
+
+                // Progress Bar
+                e("div", { style: { width: "100%", height: 6, background: C.bdr, borderRadius: 3, overflow: "hidden" } },
+                  e("div", { style: { width: `${cat.percent}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.4s ease" } })
+                ),
+
+                // Accordion items: individual transactions
+                isSelected && e("div", { style: { marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.bdr}` } },
+                  e("div", { style: { fontSize: 11, color: C.mut, marginBottom: 6 } }, `📋 ${cat.name} 상세 지출 내역`),
+                  ...cat.items.map((item, iIdx) =>
+                    e("div", {
+                      key: iIdx,
+                      style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 4px", fontSize: 12, borderBottom: iIdx === cat.items.length - 1 ? "none" : `1px solid ${C.bdr}55` }
+                    },
+                      e("div", { style: { display: "flex", gap: 8 } },
+                        e("span", { style: { color: C.acc, fontWeight: 600 } }, `${anMonth + 1}월 ${item.day}일`),
+                        e("span", { style: { color: item.memo ? C.txt : C.mut } }, item.memo || "(메모 없음)")
+                      ),
+                      e("span", { style: { fontWeight: 600, color: C.exp } }, "-" + fmt(item.amount))
+                    )
+                  )
+                )
+              );
+            })
+          )
+        )
+    ),
+
+    // 6-Month Trends Section
+    e("div", { style: { background: C.card, borderRadius: 18, padding: "18px 12px", border: `1px solid ${C.bdr}`, marginBottom: 16 } },
+      e("div", { style: { fontSize: 14, fontWeight: 700, color: C.wh, paddingLeft: 8, marginBottom: 12 } }, "📈 최근 6개월 수입 / 지출 추이"),
+      e(RC.ResponsiveContainer, { width: "100%", height: 200 },
+        e(RC.LineChart, { data: trendData, margin: { top: 5, right: 16, left: 0, bottom: 5 } },
+          e(RC.CartesianGrid, { strokeDasharray: "3 3", stroke: C.bdr }),
+          e(RC.XAxis, { dataKey: "label", tick: { fill: C.mut, fontSize: 11 }, axisLine: false, tickLine: false }),
+          e(RC.YAxis, { tickFormatter: fmtS, tick: { fill: C.mut, fontSize: 10 }, axisLine: false, tickLine: false, width: 44 }),
+          e(RC.Tooltip, {
+            contentStyle: { background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, fontSize: 12 },
+            labelStyle: { color: C.wh, fontWeight: 700 },
+            formatter: (v, n) => [fmt(v), n === "income" ? "수입" : "지출"]
+          }),
+          e(RC.Legend, { formatter: v => v === "income" ? "수입" : "지출", wrapperStyle: { fontSize: 12, color: C.mut } }),
+          e(RC.Line, { type: "monotone", dataKey: "income", stroke: C.inc, strokeWidth: 2, dot: { r: 4, fill: C.inc }, name: "income" }),
+          e(RC.Line, { type: "monotone", dataKey: "expense", stroke: C.exp, strokeWidth: 2, dot: { r: 4, fill: C.exp }, name: "expense" })
         )
       )
     ),
-    // balance chart
-    e("div",{style:{background:C.card,borderRadius:16,padding:"16px 8px",border:`1px solid ${C.bdr}`}},
-      e("div",{style:{fontSize:13,fontWeight:700,color:C.wh,paddingLeft:12,marginBottom:12}},"잔액 추이"),
-      e(RC.ResponsiveContainer,{width:"100%",height:200},
-        e(RC.LineChart,{data:analytics,margin:{top:5,right:16,left:0,bottom:5}},
-          e(RC.CartesianGrid,{strokeDasharray:"3 3",stroke:C.bdr}),
-          e(RC.XAxis,{dataKey:"label",tick:{fill:C.mut,fontSize:11},axisLine:false,tickLine:false}),
-          e(RC.YAxis,{tickFormatter:fmtS,tick:{fill:C.mut,fontSize:10},axisLine:false,tickLine:false,width:46}),
-          e(RC.Tooltip,{contentStyle:{background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:10,fontSize:12},
-            labelStyle:{color:C.wh,fontWeight:700},formatter:v=>[fmt(v),"잔액"]}),
-          e(RC.Line,{type:"monotone",dataKey:"balance",stroke:C.acc,strokeWidth:2.5,name:"balance",
-            dot:(props)=>{ const {cx,cy,value,key}=props; return React.createElement("circle",{key,cx,cy,r:4,fill:value<0?C.exp:C.acc,stroke:"none"}); }
+
+    // 6-Month Balance Chart
+    e("div", { style: { background: C.card, borderRadius: 18, padding: "18px 12px", border: `1px solid ${C.bdr}` } },
+      e("div", { style: { fontSize: 14, fontWeight: 700, color: C.wh, paddingLeft: 8, marginBottom: 12 } }, "💰 최근 6개월 잔액 추이"),
+      e(RC.ResponsiveContainer, { width: "100%", height: 190 },
+        e(RC.LineChart, { data: trendData, margin: { top: 5, right: 16, left: 0, bottom: 5 } },
+          e(RC.CartesianGrid, { strokeDasharray: "3 3", stroke: C.bdr }),
+          e(RC.XAxis, { dataKey: "label", tick: { fill: C.mut, fontSize: 11 }, axisLine: false, tickLine: false }),
+          e(RC.YAxis, { tickFormatter: fmtS, tick: { fill: C.mut, fontSize: 10 }, axisLine: false, tickLine: false, width: 44 }),
+          e(RC.Tooltip, {
+            contentStyle: { background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, fontSize: 12 },
+            labelStyle: { color: C.wh, fontWeight: 700 }, formatter: v => [fmt(v), "잔액"]
+          }),
+          e(RC.Line, {
+            type: "monotone", dataKey: "balance", stroke: C.acc, strokeWidth: 2.5, name: "balance",
+            dot: (props) => { const { cx, cy, value, key } = props; return React.createElement("circle", { key, cx, cy, r: 4, fill: value < 0 ? C.exp : C.acc, stroke: "none" }); }
           })
         )
       )
     )
   );
 
-  // ── MONTH PICKER ──
-  const monthPickerEl = showMonthPicker && e("div",{
-    style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:110,padding:20},
-    onClick:ev=>{ if(ev.target===ev.currentTarget) setMonthPicker(false); }
+  // ── MONTH PICKER MODAL ──
+  const monthPickerEl = showMonthPicker && e("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: 20 },
+    onClick: ev => { if (ev.target === ev.currentTarget) setMonthPicker(false); }
   },
-    e("div",{style:{background:C.surf,width:"100%",maxWidth:340,borderRadius:20,padding:"20px 16px 16px",border:`1px solid ${C.bdr}`}},
-      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}},
-        btn("‹",()=>setPickYear(y=>y-1),{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"}),
-        e("span",{style:{fontSize:17,fontWeight:700,color:C.wh}},pickYear+"년"),
-        btn("›",()=>setPickYear(y=>y+1),{background:"transparent",border:`1px solid ${C.bdr}`,color:C.txt,borderRadius:10,width:36,height:36,fontSize:20,cursor:"pointer",display:"inline-flex",alignItems:"center",justifyContent:"center"})
+    e("div", { style: { background: C.surf, width: "100%", maxWidth: 340, borderRadius: 20, padding: "20px 16px 16px", border: `1px solid ${C.bdr}` } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 } },
+        btn("‹", () => setPickYear(y => y - 1), { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 10, width: 36, height: 36, fontSize: 20, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }),
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, pickYear + "년"),
+        btn("›", () => setPickYear(y => y + 1), { background: "transparent", border: `1px solid ${C.bdr}`, color: C.txt, borderRadius: 10, width: 36, height: 36, fontSize: 20, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" })
       ),
-      e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:12}},
-        ...MONTHS.map((m,i)=>{
-          const isSel = pickYear===year && i===month;
-          const isCur = pickYear===now.getFullYear() && i===now.getMonth();
-          return btn(m,()=>selectMonth(i),{
-            padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",fontSize:14,fontWeight:600,
-            background:isSel?C.acc:isCur?C.acc+"22":C.card,
-            color:isSel?C.bg:isCur?C.acc:C.txt,
-            outline:isCur&&!isSel?`1px solid ${C.acc}44`:"none",width:"100%"
+      e("div", { style: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 14 } },
+        ...MONTHS.map((m, i) => {
+          const targetY = monthPickerTarget === "calendar" ? year : anYear;
+          const targetM = monthPickerTarget === "calendar" ? month : anMonth;
+          const isSel = pickYear === targetY && i === targetM;
+          const isCur = pickYear === now.getFullYear() && i === now.getMonth();
+          return btn(m, () => selectMonth(i), {
+            padding: "12px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600,
+            background: isSel ? C.acc : isCur ? C.acc + "22" : C.card,
+            color: isSel ? C.bg : isCur ? C.acc : C.txt,
+            outline: isCur && !isSel ? `1px solid ${C.acc}44` : "none", width: "100%"
           });
         })
       ),
-      e("div",{style:{display:"flex",gap:8}},
-        btn("오늘",goToday,{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${C.acc}`,background:"transparent",color:C.acc,fontWeight:600,cursor:"pointer",fontSize:13}),
-        btn("닫기",()=>setMonthPicker(false),{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${C.bdr}`,background:"transparent",color:C.mut,fontWeight:600,cursor:"pointer",fontSize:13})
+      e("div", { style: { display: "flex", gap: 8 } },
+        btn("오늘", goToday, { flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.acc}`, background: "transparent", color: C.acc, fontWeight: 600, cursor: "pointer", fontSize: 13 }),
+        btn("닫기", () => setMonthPicker(false), { flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: "transparent", color: C.mut, fontWeight: 600, cursor: "pointer", fontSize: 13 })
       )
     )
   );
 
-  // ── MODAL ──
-  const dayRecs = mr[String(selDay)]||[];
-  const modalEl = (modal && selDay) && e("div",{
-    style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:100},
-    onClick:ev=>{ if(ev.target===ev.currentTarget){setModal(false);setAdd(false);} }
+  // ── CATEGORY MANAGER MODAL ──
+  const catManagerModal = showCatManager && e("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, padding: 18 },
+    onClick: ev => { if (ev.target === ev.currentTarget) setShowCatManager(false); }
   },
-    e("div",{style:{background:C.surf,width:"100%",maxWidth:480,borderRadius:"24px 24px 0 0",
-      paddingBottom:40,maxHeight:"80vh",overflowY:"auto",border:`1px solid ${C.bdr}`,borderBottom:"none"}},
-      // handle
-      e("div",{style:{display:"flex",justifyContent:"center",padding:"12px 0 4px"}},
-        e("div",{style:{width:40,height:4,borderRadius:2,background:C.bdr}})
+    e("div", { style: { background: C.surf, width: "100%", maxWidth: 420, borderRadius: 22, padding: "20px 18px", border: `1px solid ${C.bdr}`, maxHeight: "88vh", overflowY: "auto" } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } },
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, "⚙️ 카테고리 설정"),
+        btn("✕", () => setShowCatManager(false), { background: "transparent", border: "none", color: C.mut, fontSize: 18, cursor: "pointer" })
       ),
-      // title row
-      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 20px 14px"}},
-        e("span",{style:{fontSize:17,fontWeight:700,color:C.wh}},`${year}년 ${month+1}월 ${selDay}일`),
-        btn("+ 추가",()=>{setAdd(true);setAType("expense");setACat("");setAAmt("");setAMemo("");},{
-          background:C.acc,color:C.bg,border:"none",borderRadius:20,padding:"7px 16px",fontSize:13,fontWeight:700,cursor:"pointer"
+
+      // Expense / Income tab toggle
+      e("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+        btn("지출 카테고리", () => setCatMgrTab("expense"), {
+          flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13,
+          background: catMgrTab === "expense" ? C.exp : C.card,
+          color: catMgrTab === "expense" ? C.bg : C.mut
+        }),
+        btn("수입 카테고리", () => setCatMgrTab("income"), {
+          flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13,
+          background: catMgrTab === "income" ? C.inc : C.card,
+          color: catMgrTab === "income" ? C.bg : C.mut
         })
       ),
-      // empty
-      dayRecs.length===0&&!showAdd&&e("div",{style:{textAlign:"center",padding:"24px 0",color:C.mut,fontSize:13}},"기록이 없습니다"),
-      // records
-      e("div",{style:{padding:"0 16px"}},
-        ...dayRecs.map((r,idx)=>{
-          const cl=r.type==="income"?ICAT:ECAT;
-          const cat=cl.find(c=>c.id===r.category)||cl[cl.length-1];
-          return e("div",{key:idx,style:{display:"flex",alignItems:"center",justifyContent:"space-between",
-            background:C.card,borderRadius:12,padding:"12px 14px",marginBottom:8,border:`1px solid ${C.bdr}`}},
-            e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-              e("span",{style:{fontSize:20}},cat.i),
-              e("div",null,
-                e("div",{style:{fontSize:12,color:C.mut}},cat.l),
-                r.memo&&e("div",{style:{fontSize:11,color:C.mut,marginTop:1}},r.memo)
+
+      // List of existing categories
+      e("div", { style: { marginBottom: 16 } },
+        e("div", { style: { fontSize: 12, color: C.mut, marginBottom: 8 } }, "현재 등록된 카테고리 목록"),
+        e("div", { style: { display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" } },
+          ...(catMgrTab === "expense" ? expenseCats : incomeCats).map(cat =>
+            e("div", {
+              key: cat.id,
+              style: { display: "flex", alignItems: "center", justifyContent: "space-between", background: C.card, borderRadius: 10, padding: "8px 12px", border: `1px solid ${C.bdr}` }
+            },
+              e("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                e("span", { style: { fontSize: 18 } }, cat.i),
+                e("span", { style: { fontSize: 13, fontWeight: 600, color: C.wh } }, cat.l)
+              ),
+              cat.id === "etc" ?
+                e("span", { style: { fontSize: 11, color: C.mut } }, "기본") :
+                btn("삭제", () => handleDeleteCategory(cat.id), {
+                  background: C.exp + "22", border: `1px solid ${C.exp}44`, color: C.exp,
+                  borderRadius: 8, padding: "3px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer"
+                })
+            )
+          )
+        )
+      ),
+
+      // Add New Category Section
+      e("div", { style: { background: C.card, borderRadius: 14, padding: "14px", border: `1px solid ${C.bdr}` } },
+        e("div", { style: { fontSize: 13, fontWeight: 700, color: C.wh, marginBottom: 10 } }, `+ 새로운 ${catMgrTab === "expense" ? "지출" : "수입"} 카테고리 추가`),
+        // Emoji selector
+        e("div", { style: { marginBottom: 10 } },
+          e("div", { style: { fontSize: 11, color: C.mut, marginBottom: 6 } }, `아이콘 선택 (선택됨: ${newCatEmoji})`),
+          e("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 90, overflowY: "auto", background: C.surf, padding: 8, borderRadius: 8 } },
+            ...EMOJI_PALETTE.map(em =>
+              e("span", {
+                key: em,
+                onClick: () => setNewCatEmoji(em),
+                style: {
+                  fontSize: 18, cursor: "pointer", padding: "2px 4px", borderRadius: 6,
+                  background: newCatEmoji === em ? C.acc + "44" : "transparent"
+                }
+              }, em)
+            )
+          )
+        ),
+        // Name input & Add button
+        e("div", { style: { display: "flex", gap: 8 } },
+          e("input", {
+            type: "text",
+            placeholder: "카테고리 이름 입력 (예: 반려동물)",
+            value: newCatName,
+            onChange: ev => setNewCatName(ev.target.value),
+            onKeyDown: ev => { if (ev.key === "Enter") handleAddCategory(); },
+            style: { flex: 1, background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, padding: "8px 12px", color: C.wh, fontSize: 13, outline: "none" }
+          }),
+          btn("추가", handleAddCategory, {
+            background: C.acc, color: C.bg, border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer"
+          })
+        )
+      )
+    )
+  );
+
+  // ── SYNC & SETTINGS MODAL ──
+  const syncModal = showSyncModal && e("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 130, padding: 18 },
+    onClick: ev => { if (ev.target === ev.currentTarget) setShowSyncModal(false); }
+  },
+    e("div", { style: { background: C.surf, width: "100%", maxWidth: 420, borderRadius: 22, padding: "20px 18px", border: `1px solid ${C.bdr}`, maxHeight: "88vh", overflowY: "auto" } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } },
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, "☁️ 클라우드 동기화 및 백업"),
+        btn("✕", () => setShowSyncModal(false), { background: "transparent", border: "none", color: C.mut, fontSize: 18, cursor: "pointer" })
+      ),
+
+      // Sync status banner
+      e("div", { style: { background: C.card, borderRadius: 12, padding: "10px 14px", border: `1px solid ${C.bdr}`, marginBottom: 16 } },
+        e("div", { style: { fontSize: 11, color: C.mut } }, "동기화 상태"),
+        e("div", { style: { fontSize: 13, fontWeight: 600, color: syncState.user ? C.inc : "#fbbf24", marginTop: 2 } }, syncState.status)
+      ),
+
+      // Auth section
+      syncState.user ?
+        e("div", { style: { background: C.card, borderRadius: 14, padding: 14, border: `1px solid ${C.bdr}`, marginBottom: 16 } },
+          e("div", { style: { fontSize: 11, color: C.mut, marginBottom: 4 } }, "로그인된 계정"),
+          e("div", { style: { fontSize: 14, fontWeight: 700, color: C.wh, marginBottom: 12 } }, syncState.user.email),
+          e("div", { style: { display: "flex", gap: 8 } },
+            btn("🔄 지금 동기화", async () => {
+              if (window.GagebooFirebase) await window.GagebooFirebase.syncNow();
+            }, { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${C.acc}`, background: C.acc + "22", color: C.acc, fontWeight: 700, fontSize: 13, cursor: "pointer" }),
+            btn("🚪 로그아웃", async () => {
+              if (window.GagebooFirebase) await window.GagebooFirebase.logout();
+            }, { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: "transparent", color: C.mut, fontWeight: 600, fontSize: 13, cursor: "pointer" })
+          )
+        ) :
+        e("div", { style: { background: C.card, borderRadius: 14, padding: 14, border: `1px solid ${C.bdr}`, marginBottom: 16 } },
+          e("div", { style: { fontSize: 13, fontWeight: 700, color: C.wh, marginBottom: 8 } }, "로그인 / 가입"),
+          e("p", { style: { fontSize: 11, color: C.mut, marginBottom: 12, lineHeight: 1.4 } },
+            "로그인하면 모바일 폰과 PC 등 여러 기기에서 실시간으로 동일한 가계부를 이용할 수 있습니다. (처음 입력 시 자동 가입)"
+          ),
+          e("input", {
+            type: "email", placeholder: "이메일 주소", value: loginEmail, onChange: ev => setLoginEmail(ev.target.value),
+            style: { width: "100%", background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, padding: "9px 12px", color: C.wh, fontSize: 13, outline: "none", marginBottom: 8 }
+          }),
+          e("input", {
+            type: "password", placeholder: "비밀번호 (6자 이상)", value: loginPw, onChange: ev => setLoginPw(ev.target.value),
+            style: { width: "100%", background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, padding: "9px 12px", color: C.wh, fontSize: 13, outline: "none", marginBottom: 10 }
+          }),
+          authError && e("div", { style: { color: C.exp, fontSize: 11, marginBottom: 8 } }, authError),
+          btn("로그인 / 시작하기", async () => {
+            if (!loginEmail || !loginPw) { alert("이메일과 비밀번호를 입력해 주세요."); return; }
+            setAuthError("");
+            if (window.GagebooFirebase) {
+              const res = await window.GagebooFirebase.login(loginEmail, loginPw);
+              if (!res.ok) setAuthError(res.msg);
+            }
+          }, { width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: C.acc, color: C.bg, fontWeight: 700, fontSize: 14, cursor: "pointer" })
+        ),
+
+      // Backup & Data management section
+      e("div", { style: { background: C.card, borderRadius: 14, padding: 14, border: `1px solid ${C.bdr}` } },
+        e("div", { style: { fontSize: 13, fontWeight: 700, color: C.wh, marginBottom: 10 } }, "💾 데이터 백업 및 복원"),
+        e("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+          btn("📥 백업 파일 저장 (JSON 다운로드)", () => {
+            if (window.GagebooFirebase) window.GagebooFirebase.exportData();
+          }, { width: "100%", padding: "9px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: C.surf, color: C.txt, fontSize: 12, fontWeight: 600, cursor: "pointer" }),
+          btn("📤 백업 파일 불러오기", () => {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".json,application/json";
+            input.onchange = ev => {
+              const f = ev.target.files[0];
+              if (f && window.GagebooFirebase) {
+                window.GagebooFirebase.importData(f, () => {
+                  alert("성공적으로 복원되었습니다.");
+                  setRecs(loadRec());
+                }, err => alert("복원 실패: " + err));
+              }
+            };
+            input.click();
+          }, { width: "100%", padding: "9px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: C.surf, color: C.txt, fontSize: 12, fontWeight: 600, cursor: "pointer" }),
+          btn("🧹 중복 데이터 정리", () => {
+            if (confirm("중복된 기록을 검사하고 정리하시겠습니까?")) {
+              if (window.GagebooFirebase) window.GagebooFirebase.dedupeData();
+              setRecs(loadRec());
+              alert("정리가 완료되었습니다.");
+            }
+          }, { width: "100%", padding: "9px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: C.surf, color: C.mut, fontSize: 12, fontWeight: 600, cursor: "pointer" })
+        )
+      )
+    )
+  );
+
+  // ── TRANSACTION MODAL ──
+  const dayRecs = mr[String(selDay)] || [];
+  const modalEl = (modal && selDay) && e("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 110 },
+    onClick: ev => { if (ev.target === ev.currentTarget) { setModal(false); setAdd(false); } }
+  },
+    e("div", {
+      style: {
+        background: C.surf, width: "100%", maxWidth: 480, borderRadius: "24px 24px 0 0",
+        paddingBottom: 40, maxHeight: "82vh", overflowY: "auto", border: `1px solid ${C.bdr}`, borderBottom: "none"
+      }
+    },
+      // Top Handle
+      e("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 4px" } },
+        e("div", { style: { width: 40, height: 4, borderRadius: 2, background: C.bdr } })
+      ),
+      // Title row
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 20px 14px" } },
+        e("span", { style: { fontSize: 17, fontWeight: 700, color: C.wh } }, `${year}년 ${month + 1}월 ${selDay}일`),
+        btn("+ 추가", () => { setAdd(true); setAType("expense"); setACat(""); setAAmt(""); setAMemo(""); }, {
+          background: C.acc, color: C.bg, border: "none", borderRadius: 20, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer"
+        })
+      ),
+      // Empty record notice
+      dayRecs.length === 0 && !showAdd && e("div", { style: { textAlign: "center", padding: "28px 0", color: C.mut, fontSize: 13 } }, "기록이 없습니다"),
+      // Records list
+      e("div", { style: { padding: "0 16px" } },
+        ...dayRecs.map((r, idx) => {
+          const cat = getCatInfo(r.category, r.type);
+          return e("div", {
+            key: idx,
+            style: {
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: C.card, borderRadius: 12, padding: "12px 14px", marginBottom: 8, border: `1px solid ${C.bdr}`
+            }
+          },
+            e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+              e("span", { style: { fontSize: 20 } }, cat.i),
+              e("div", null,
+                e("div", { style: { fontSize: 12, color: C.mut } }, cat.l),
+                r.memo && e("div", { style: { fontSize: 11, color: C.txt, marginTop: 1 } }, r.memo)
               )
             ),
-            e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-              e("span",{style:{fontSize:14,fontWeight:700,color:r.type==="income"?C.inc:C.exp}},
-                (r.type==="income"?"+":"-")+fmt(r.amount)
+            e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+              e("span", { style: { fontSize: 14, fontWeight: 700, color: r.type === "income" ? C.inc : C.exp } },
+                (r.type === "income" ? "+" : "-") + fmt(r.amount)
               ),
-              btn("×",()=>doDel(String(selDay),idx),{
-                background:"transparent",border:"none",color:C.mut,cursor:"pointer",fontSize:20,lineHeight:1
+              btn("×", () => doDel(String(selDay), idx), {
+                background: "transparent", border: "none", color: C.mut, cursor: "pointer", fontSize: 20, lineHeight: 1
               })
             )
           );
         })
       ),
-      // add form
-      showAdd&&e("div",{style:{padding:"12px 16px 0"}},
-        e("div",{style:{background:C.card,borderRadius:16,padding:16,border:`1px solid ${C.bdr}`}},
-          // type toggle
-          e("div",{style:{display:"flex",gap:8,marginBottom:14}},
-            ...[{v:"expense",l:"지출",c:C.exp},{v:"income",l:"수입",c:C.inc}].map(t=>
-              btn(t.l,()=>{setAType(t.v);setACat("");},{
-                flex:1,padding:"9px 0",borderRadius:10,border:"none",cursor:"pointer",fontWeight:700,fontSize:14,
-                background:aType===t.v?t.c+"22":C.surf,color:aType===t.v?t.c:C.mut,
-                outline:aType===t.v?`1.5px solid ${t.c}`:"1.5px solid transparent",width:"100%"
+
+      // Add form
+      showAdd && e("div", { style: { padding: "12px 16px 0" } },
+        e("div", { style: { background: C.card, borderRadius: 16, padding: 16, border: `1px solid ${C.bdr}` } },
+          // Type toggle
+          e("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+            ...[{ v: "expense", l: "지출", c: C.exp }, { v: "income", l: "수입", c: C.inc }].map(t =>
+              btn(t.l, () => { setAType(t.v); setACat(""); }, {
+                flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14,
+                background: aType === t.v ? t.c + "22" : C.surf, color: aType === t.v ? t.c : C.mut,
+                outline: aType === t.v ? `1.5px solid ${t.c}` : "1.5px solid transparent", width: "100%"
               })
             )
           ),
-          // categories
-          e("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}},
-            ...cats.map(c=>
-              btn(c.i+" "+c.l,()=>setACat(c.id),{
-                padding:"5px 10px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,
-                background:aCat===c.id?C.acc+"33":C.surf,color:aCat===c.id?C.acc:C.mut,
-                outline:aCat===c.id?`1.5px solid ${C.acc}`:"1.5px solid transparent"
+          // Category chips
+          e("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14, alignItems: "center" } },
+            ...cats.map(c =>
+              btn(c.i + " " + c.l, () => setACat(c.id), {
+                padding: "6px 11px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: aCat === c.id ? C.acc + "33" : C.surf, color: aCat === c.id ? C.acc : C.mut,
+                outline: aCat === c.id ? `1.5px solid ${C.acc}` : "1.5px solid transparent"
               })
-            )
+            ),
+            // Manage categories button chip
+            btn("⚙️ 추가/관리", () => { setShowCatManager(true); setCatMgrTab(aType); }, {
+              padding: "5px 10px", borderRadius: 20, border: `1px dashed ${C.bdr}`, cursor: "pointer", fontSize: 11, fontWeight: 600,
+              background: "transparent", color: C.mut
+            })
           ),
-          // amount
-          e("input",{type:"text",inputMode:"numeric",placeholder:"금액 입력",value:aAmt,onChange:onAmt,
-            style:{width:"100%",background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:10,
-              padding:"10px 14px",color:C.wh,fontSize:16,fontWeight:700,outline:"none",
-              marginBottom:10,display:"block"}}),
-          // memo
-          e("input",{type:"text",placeholder:"메모 (선택)",value:aMemo,onChange:ev=>setAMemo(ev.target.value),
-            style:{width:"100%",background:C.surf,border:`1px solid ${C.bdr}`,borderRadius:10,
-              padding:"9px 14px",color:C.txt,fontSize:13,outline:"none",marginBottom:12,display:"block"}}),
-          // buttons
-          e("div",{style:{display:"flex",gap:8}},
-            btn("취소",()=>setAdd(false),{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${C.bdr}`,
-              background:"transparent",color:C.mut,fontWeight:600,cursor:"pointer",fontSize:13}),
-            btn("저장",doSave,{flex:2,padding:"10px 0",borderRadius:10,border:"none",
-              background:C.acc,color:C.bg,fontWeight:700,cursor:"pointer",fontSize:14})
+          // Amount
+          e("input", {
+            type: "text", inputMode: "numeric", placeholder: "금액 입력", value: aAmt, onChange: onAmt,
+            style: { width: "100%", background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, padding: "10px 14px", color: C.wh, fontSize: 16, fontWeight: 700, outline: "none", marginBottom: 10, display: "block" }
+          }),
+          // Memo
+          e("input", {
+            type: "text", placeholder: "메모 (선택)", value: aMemo, onChange: ev => setAMemo(ev.target.value),
+            style: { width: "100%", background: C.surf, border: `1px solid ${C.bdr}`, borderRadius: 10, padding: "9px 14px", color: C.txt, fontSize: 13, outline: "none", marginBottom: 12, display: "block" }
+          }),
+          // Buttons
+          e("div", { style: { display: "flex", gap: 8 } },
+            btn("취소", () => setAdd(false), { flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${C.bdr}`, background: "transparent", color: C.mut, fontWeight: 600, cursor: "pointer", fontSize: 13 }),
+            btn("저장", doSave, { flex: 2, padding: "10px 0", borderRadius: 10, border: "none", background: C.acc, color: C.bg, fontWeight: 700, cursor: "pointer", fontSize: 14 })
           )
         )
       )
     )
   );
 
-  // ── ROOT ──
-  return e("div",{style:{fontFamily:"'Noto Sans KR',sans-serif",background:C.bg,minHeight:"100dvh",color:C.txt,maxWidth:480,margin:"0 auto",position:"relative"}},
-    // header
-    e("div",{style:{padding:"20px 20px 0"}},
-      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:4}},
-        e("span",{style:{fontSize:22,fontWeight:700,letterSpacing:-0.5,color:C.wh}},"📒 가계부"),
-        e("div",{style:{display:"flex",gap:8}},
-          ...[["calendar","📅 캘린더"],["analytics","📊 분석"]].map(([v,label])=>
-            btn(label,()=>setView(v),{
-              padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,
-              background:view===v?C.acc:C.card,color:view===v?C.bg:C.mut
-            })
-          )
+  // ── ROOT RENDER ──
+  return e("div", {
+    style: { fontFamily: "'Noto Sans KR', sans-serif", background: C.bg, minHeight: "100dvh", color: C.txt, maxWidth: 480, margin: "0 auto", position: "relative" }
+  },
+    // Top App Header
+    e("div", { style: { padding: "16px 20px 6px" } },
+      e("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
+        e("span", { style: { fontSize: 21, fontWeight: 700, letterSpacing: -0.5, color: C.wh } }, "📒 가계부"),
+        e("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          // Cloud sync status indicator pill
+          e("button", {
+            onClick: () => setShowSyncModal(true),
+            style: {
+              background: C.card, border: `1px solid ${C.bdr}`, color: syncState.user ? C.inc : C.mut,
+              borderRadius: 20, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5
+            }
+          },
+            e("span", { style: { width: 6, height: 6, borderRadius: "50%", background: syncState.user ? C.inc : "#fbbf24", display: "inline-block" } }),
+            syncState.user ? "클라우드" : "로그인"
+          ),
+          // Category manager shortcut
+          e("button", {
+            onClick: () => setShowCatManager(true),
+            style: { background: C.card, border: `1px solid ${C.bdr}`, color: C.mut, borderRadius: 20, width: 30, height: 30, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+          }, "⚙️")
+        )
+      ),
+
+      // View switcher tabs
+      e("div", { style: { display: "flex", gap: 8, marginTop: 14 } },
+        ...[["calendar", "📅 캘린더"], ["analytics", "📊 분석"]].map(([v, label]) =>
+          btn(label, () => setView(v), {
+            flex: 1, padding: "8px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
+            background: view === v ? C.acc : C.card,
+            color: view === v ? C.bg : C.mut,
+            boxShadow: view === v ? "0 2px 8px rgba(167,139,250,0.25)" : "none",
+            transition: "all 0.15s ease"
+          })
         )
       )
     ),
-    view==="calendar"?calendarView:analyticsView,
+
+    view === "calendar" ? calendarView : analyticsView,
     monthPickerEl,
+    catManagerModal,
+    syncModal,
     modalEl
   );
 }
@@ -636,8 +1209,8 @@ function App() {
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 <script>
-if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("./sw.js").catch(()=>{});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 </script>
 </body>
